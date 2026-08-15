@@ -20,6 +20,17 @@ export const STATE_WINDOW = 200  // max hot threads PER typed set (identity + vo
 export const WINDOW = 2          // T_assoc reach (T_seq is always 1)
 export const MIN_CONTEXT = 3     // OOV needs >= this many known words to mint
 export const WALK_LEN = 12
+// HEBBIAN + JIGGLE SPRING (the fuller loop). Threads reshape the geometry the
+// evaluators judge from: warmly co-threaded words pull together (LR_HEBB, saturating
+// in hot so no thread can yank harder than the cap), and every living position is
+// spring-tethered back to its pristine GloVe anchor (SPRING — the Body's jiggle
+// sphere, as a restoring force instead of a clamp). The spring is the counterforce
+// that thread decay can't provide here (decay is input-gated): it keeps cos an
+// independent judge, so the tournament stays a semantic-hub detector rather than
+// collapsing to pure thread-frequency centrality.
+export const LR_HEBB = 0.02      // per-tick thread-pull cap (step = LR_HEBB * hot/(1+hot))
+export const SPRING = 0.02       // per-tick relaxation toward the pristine anchor
+export const BRAIN_VERSION = 'hebbian-1'   // pre-change baseline: git tag pre-hebbian
 
 export const FUNCTION_WORDS = new Set([
   'the', 'and', 'that', 'this', 'you', 'your', 'what', 'when', 'where', 'with',
@@ -322,15 +333,59 @@ export class Eye {
     this._centroid = null
   }
 
+  // HEBBIAN THREAD-PULL — the threads reshape the positions the evaluators judge from.
+  // Each warm T_assoc pair pulls its two ends together, step saturating in hot
+  // (hot/(1+hot)) so a very hot thread pulls at most LR toward its partner per tick.
+  // With this, threads influence the champion BOTH through the weighted vote
+  // (score = T·cos) and through where the evaluators stand — the fuller loop.
+  hebbianPull(LR = LR_HEBB) {
+    for (const [k, hot] of this.Tassoc) {
+      const [a, b] = unkey(k)
+      const pa = this.posOf(a), pb = this.posOf(b)
+      if (!pa || !pb) continue
+      const step = LR * (hot / (1 + hot))
+      for (let i = 0; i < this.dim; i++) {
+        const d = pb[i] - pa[i]
+        pa[i] += step * d
+        pb[i] -= step * d
+      }
+    }
+  }
+
+  // JIGGLE SPRING — every living position relaxes toward its pristine GloVe/minted
+  // anchor. Deformation is rented, not owned: an unfed eye's field drifts home instead
+  // of locking at wherever Hebbian pull walked it. This is what keeps cos partly
+  // external to the thread history (the un-wireheadable-judge property).
+  springBack(lambda = SPRING) {
+    for (const [w, p] of this.pos) {
+      const g = this.vecOf(w)
+      if (!g) continue
+      for (let i = 0; i < this.dim; i++) p[i] += lambda * (g[i] - p[i])
+    }
+  }
+
+  renormalizePositions() {
+    for (const p of this.pos.values()) {
+      let n = 0
+      for (let i = 0; i < this.dim; i++) n += p[i] * p[i]
+      n = Math.sqrt(n) || 1
+      for (let i = 0; i < this.dim; i++) p[i] /= n
+    }
+  }
+
   // THE LIVING TICK — runs constantly, with or without new input: the tournament crowns
-  // the champion, the champion deforms the field (shift = pull + reverse-tournament
-  // expansion), and the crown can move next tick because the positions moved. No thread
-  // decay here (that is tied to input in absorb) — so an unfed eye settles rather than
-  // erasing; a fed eye keeps evolving.
+  // the champion, the champion deforms the field (shift), the threads deform it too
+  // (hebbianPull), the spring relaxes everything toward the pristine anchor, and the
+  // crown can move next tick because the positions moved. No thread decay here (that is
+  // tied to input in absorb) — so an unfed eye settles rather than erasing; a fed eye
+  // keeps evolving.
   liveTick() {
     if (!this.Tassoc.size) return null
     this.champion = this.tournamentChampion()
     if (this.champion) this.shift(this.champion)
+    this.hebbianPull()
+    this.springBack()
+    this.renormalizePositions()
     this._centroid = null
     return this.champion
   }

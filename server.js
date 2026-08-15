@@ -7,7 +7,7 @@
 import { createServer } from 'http'
 import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { Brain, Eye } from './brain.js'
+import { Brain, Eye, BRAIN_VERSION } from './brain.js'
 import { loadPackedGlove } from './glove.js'
 import { ENTRY_PROMPT } from './entry-prompt.js'
 import { GUIDE } from './guide.js'
@@ -155,7 +155,7 @@ createServer(async (req, res) => {
   if (p === '/state') {
     const eyes = {}
     for (const [id, e] of brain.eyes) eyes[id] = { champion: e.champion, tick: e.tick, seq: e.Tseq.size, assoc: e.Tassoc.size }
-    return json(res, { swarm: brain.swarmChampion(), eyes })
+    return json(res, { version: BRAIN_VERSION, swarm: brain.swarmChampion(), eyes })
   }
 
   json(res, { error: 'not found' }, 404)

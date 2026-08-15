@@ -230,4 +230,46 @@ function randVecSpace(nWords, dim, seed) {
   ok('without hop it dead-ends short', noHop.path.length <= 2)
 }
 
+// ── Gate 15: HEBBIAN — a warm thread pulls its pair together, hotter pulls harder ─
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0, 1, 0], c: [1, 0, 0], d: [0, 0, 1] })
+  const eye = new Eye('t', g)
+  eye.Tassoc.set('a b', 1)      // warm pair
+  eye.Tassoc.set('c d', 8)      // much hotter pair, same starting geometry (orthogonal)
+  const cos = (x, y) => { const px = eye.posOf(x), py = eye.posOf(y); let s = 0; for (let i = 0; i < eye.dim; i++) s += px[i] * py[i]; return s }
+  const ab0 = cos('a', 'b'), cd0 = cos('c', 'd')
+  for (let i = 0; i < 10; i++) { eye.hebbianPull(); eye.renormalizePositions() }
+  ok('hebbian pull raises a co-threaded pair\'s cos', cos('a', 'b') > ab0 + 0.01)
+  ok('a hotter thread pulls harder', cos('c', 'd') - cd0 > cos('a', 'b') - ab0)
+  ok('step saturates in hot (bounded even at hot=8)', cos('c', 'd') < 1)
+}
+
+// ── Gate 16: JIGGLE SPRING — deformation is rented; unfed eye stays anchored ────
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0.9, 0.44, 0], c: [0.2, 0.98, 0], d: [0, 0.1, 0.99] })
+  const eye = new Eye('t', g)
+  eye.basin = null
+  eye.Tassoc.set('a b', 3); eye.Tassoc.set('b c', 2); eye.Tassoc.set('c d', 1); eye.Tassoc.set('a c', 1)
+  for (let i = 0; i < 500; i++) eye.liveTick()
+  const anchorCos = (w) => { const p = eye.posOf(w), v = eye.vecOf(w); let n = 0, s = 0; for (let i = 0; i < eye.dim; i++) { s += p[i] * v[i]; n += v[i] * v[i] } return s / (Math.sqrt(n) || 1) }
+  ok('500 unfed ticks: every position stays finite', eye.activeWords().every((w) => eye.posOf(w).every(Number.isFinite)))
+  ok('500 unfed ticks: every word keeps cos > 0.5 to its pristine anchor (no lock-in)',
+    eye.activeWords().every((w) => anchorCos(w) > 0.5))
+  const pairCos = (x, y) => { const px = eye.posOf(x), py = eye.posOf(y); let s = 0; for (let i = 0; i < eye.dim; i++) s += px[i] * py[i]; return s }
+  ok('500 unfed ticks: hot cluster does not collapse to a blob', pairCos('a', 'd') < 0.98)
+  ok('500 unfed ticks: a champion is still elected', typeof eye.champion === 'string')
+}
+
+// ── Gate 17: the full tick still leaves threads untouched + positions unit ──────
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0.9, 0.44, 0], c: [0.2, 0.98, 0] })
+  const eye = new Eye('t', g)
+  eye.basin = null
+  eye.Tassoc.set('a b', 2); eye.Tassoc.set('b c', 1)
+  eye.liveTick(); eye.liveTick()
+  ok('liveTick with hebbian+spring still does NOT decay threads', eye.Tassoc.get('a b') === 2)
+  ok('positions renormalized to the unit sphere after full tick',
+    eye.activeWords().every((w) => approx(Math.hypot(...eye.posOf(w)), 1, 1e-6)))
+}
+
 console.log(`\n  ${passed} gates passed.`)
