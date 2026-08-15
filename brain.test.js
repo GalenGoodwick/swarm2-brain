@@ -80,7 +80,12 @@ function randVecSpace(nWords, dim, seed) {
   }
   ok('T_seq never bloats past STATE_WINDOW', eye.Tseq.size <= STATE_WINDOW)
   ok('T_assoc never bloats past STATE_WINDOW', eye.Tassoc.size <= STATE_WINDOW)
-  ok('state saturates AT the constant window', eye.Tassoc.size === STATE_WINDOW)
+  // cap mechanism (decay + drop oldest/coolest): an oversized set drops to exactly the cap
+  const eye2 = new Eye('t2', g)
+  for (let i = 0; i < STATE_WINDOW + 200; i++) eye2.Tassoc.set('x' + i + ' y' + i, (i + 1) / 1000)
+  eye2.forget()
+  ok('forget caps oversized set at exactly STATE_WINDOW', eye2.Tassoc.size === STATE_WINDOW)
+  ok('forget drops the weakest (oldest-unwarmed)', !eye2.Tassoc.has('x0 y0'))
   // meta-precedent readback is bounded regardless of how much was said
   const mp = eye.metaPrecedent({ threads: 100 })
   ok('meta precedent is bounded (<=100 warm threads)', mp.warmThreads.length <= 100)

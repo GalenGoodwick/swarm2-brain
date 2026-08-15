@@ -18,6 +18,10 @@ const glove = loadPackedGlove('./glove-50000-f32.bin', './glove-50000-vocab.json
 const brain = new Brain(glove)
 console.log(`brain loaded: ${glove.size} words, ${glove.dim}d`)
 
+// crash guards — a single bad tick or request must never take the brain down
+process.on('uncaughtException', (e) => console.error('uncaughtException:', e?.message))
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.message))
+
 // ─── persistence (bounded state → never lose the stream on restart) ────────────
 function persist() {
   const eyes = {}
@@ -64,17 +68,19 @@ function broadcast(ev) {
 const rot = {}
 setInterval(() => {
   for (const [id, eye] of brain.eyes) {
-    if (!eye.Tassoc.size) continue
-    eye.liveTick()                    // CONSTANT: tournament crowns champion → champion
+    try {                             // one bad eye must never crash the tick
+      if (!eye.Tassoc.size) continue
+      eye.liveTick()                  // CONSTANT: tournament crowns champion → champion
                                       // deforms the field (shift) → crown can move next tick
-    if (!eye.Tseq.size) continue
-    const seeds = eye.thoughtSeeds(12)
-    if (!seeds.length) continue
-    const i = (rot[id] = (rot[id] || 0) + 1)
-    const seed = seeds[i % seeds.length]
-    const { text } = eye.reverseTournament(10, seed)
-    if (text.split(' ').length < 2) continue   // skip dead-end seeds
-    broadcast({ t: Date.now(), eye: id, thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion() })
+      if (!eye.Tseq.size) continue
+      const seeds = eye.thoughtSeeds(12)
+      if (!seeds.length) continue
+      const i = (rot[id] = (rot[id] || 0) + 1)
+      const seed = seeds[i % seeds.length]
+      const { text } = eye.reverseTournament(10, seed)
+      if (text.split(' ').length < 2) continue   // skip dead-end seeds
+      broadcast({ t: Date.now(), eye: id, thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion() })
+    } catch (e) { console.error(`tick error [${id}]:`, e?.message) }
   }
 }, 2200)
 

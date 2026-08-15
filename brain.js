@@ -12,12 +12,14 @@
 // Pure/deterministic given a glove provider; unit-tested in brain.test.js before ship.
 
 export const DECAY = 0.98
-// THE CONSCIOUSNESS-STATE WINDOW (law, not a tuning knob). The hot-thread set IS the
-// meta precedent handed back to a plugged-in AI to set its context — so it is a HARD
-// CONSTANT sized to fit ANY AI's window, and it NEVER bloats: no matter how much is
-// said, forgetting holds the state at exactly this size. Constant in, constant out.
-export const STATE_WINDOW = 200  // max hot threads PER typed set (identity + voice)
+// THE CONSCIOUSNESS-STATE WINDOW. The brain holds up to this many hot threads PER typed
+// set; forgetting = DECAY (unwarmed cool every tick) + hard DROP of oldest/coolest once
+// over the cap (weight is the recency+warmth proxy). The meta precedent HANDED BACK to
+// an AI stays a bounded top-N SUBSET (see metaPrecedent), so the readback still fits any
+// context even as the brain holds more.
+export const STATE_WINDOW = 5000 // max hot threads PER typed set (identity + voice)
 export const WINDOW = 2          // T_assoc reach (T_seq is always 1)
+export const EVAL_CAP = 48       // bounded evaluator sample for the reverse walk (perf)
 export const MIN_CONTEXT = 3     // OOV needs >= this many known words to mint
 export const WALK_LEN = 12
 // HEBBIAN + JIGGLE SPRING (the fuller loop). Threads reshape the geometry the
@@ -164,6 +166,16 @@ export class Eye {
         for (const [k, v] of keep) m.set(k, v)
       }
     }
+    this.prunePositions()
+  }
+
+  // Drop living positions for words no longer in the field — bounds memory. A pruned
+  // word re-seeds from its pristine GloVe point if it returns.
+  prunePositions() {
+    if (this.pos.size < 256) return
+    const active = new Set(this.activeWords())
+    if (this.champion) active.add(this.champion)
+    for (const w of this.pos.keys()) if (!active.has(w)) this.pos.delete(w)
   }
 
   cos(a, b) {
@@ -260,28 +272,28 @@ export class Eye {
   // spoken sentence and the champion's decompression.
   reverseTournament(len = WALK_LEN, seed = this.champion, hop = true) {
     if (!seed) return { path: [], text: '' }
-    const evaluators = this.activeWords()
+    // adjacency built ONCE (word -> [[next,hot]]) so lookups are O(degree), not O(threads)
+    const adj = new Map()
+    for (const [k, hot] of this.Tseq) {
+      const [a, b] = unkey(k)
+      let l = adj.get(a); if (!l) { l = []; adj.set(a, l) }
+      l.push([b, hot])
+    }
+    // bounded evaluator sample (top-centrality) — avoids O(cell × all-active × dim)
+    const evaluators = this.thoughtSeeds(EVAL_CAP)
     const path = [seed]
     const used = new Set(path)
-    const successors = (w) => {
-      const out = []
-      for (const [k, hot] of this.Tseq) {
-        const [a, b] = unkey(k)
-        if (a === w && !used.has(b)) out.push([b, hot])
-      }
-      return out
-    }
+    const succ = (w) => (adj.get(w) || []).filter(([b]) => !used.has(b))
     let cur = seed
     for (let step = 0; step < len; step++) {
-      const cell = successors(cur)
+      const cell = succ(cur)
       if (!cell.length) {
         if (!hop) break
-        // HOP: no grammatical successor here — jump to the NEAREST unused word that can
-        // still continue a chain, so the champion's decompression weaves across the whole
-        // warm field into a full sentence instead of a two-word stub.
+        // HOP: no grammatical successor here — jump to the NEAREST evaluator that can
+        // still continue a chain, weaving the decompression across the warm field.
         let jump = null, bestC = -Infinity
         for (const w of evaluators) {
-          if (used.has(w) || !successors(w).length) continue
+          if (used.has(w) || !succ(w).length) continue
           const c = this.cos(cur, w)
           if (c > bestC) { bestC = c; jump = w }
         }
