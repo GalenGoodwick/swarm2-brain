@@ -40,6 +40,7 @@ function persist() {
       tick: eye.tick, champion: eye.champion,
       Tseq: [...eye.Tseq], Tassoc: [...eye.Tassoc],
       minted: [...eye.minted].map(([w, v]) => [w, [...v]]),
+      mintedN: [...eye.mintedN],
       // pos (living positions) is deliberately NOT persisted — it is ephemeral ("rented,
       // not owned"): the spring re-seeds it from GloVe on restart. Persisting it bloated
       // the state file and stalled/OOM'd the 30s write. Threads + minted are the identity.
@@ -57,6 +58,7 @@ function restore() {
       eye.champion = s.champion || null
       eye.Tseq = new Map(s.Tseq); eye.Tassoc = new Map(s.Tassoc)
       eye.minted = new Map((s.minted || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
+      eye.mintedN = new Map(s.mintedN || [])
       // pos NOT restored — re-seeds from GloVe on demand (ephemeral by design)
     }
     console.log(`restored ${brain.eyes.size} eyes`)

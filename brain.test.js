@@ -277,4 +277,17 @@ function randVecSpace(nWords, dim, seed) {
     eye.activeWords().every((w) => approx(Math.hypot(...eye.posOf(w)), 1, 1e-6)))
 }
 
+// ── Gate 15: minted words REFINE toward new contexts (semantic location woven from use) ──
+{
+  const g = mockProvider({ sea: [1, 0, 0], boat: [1, 0, 0], wave: [1, 0, 0], sky: [0, 1, 0], sun: [0, 1, 0], cloud: [0, 1, 0] })
+  const eye = new Eye('t', g)
+  eye.absorb('sea boat wave kraken')                     // minted near the sea cluster [1,0,0]
+  const v1 = Float32Array.from(eye.minted.get('kraken'))
+  for (let i = 0; i < 8; i++) eye.absorb('sky sun cloud kraken')  // repeatedly used near [0,1,0]
+  const v2 = eye.minted.get('kraken')
+  ok('minted word refines TOWARD the new context', v2[1] > v1[1] + 0.1)
+  ok('minted word drifts AWAY from its first context', v2[0] < v1[0] - 0.05)
+  ok('refinement counter grows with use', eye.mintedN.get('kraken') === 9)
+}
+
 console.log(`\n  ${passed} gates passed.`)

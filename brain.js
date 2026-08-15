@@ -80,6 +80,7 @@ export class Eye {
     this.Tseq = new Map()     // key -> hot   (directed, consecutive)
     this.Tassoc = new Map()   // key -> hot   (directed, windowed)
     this.minted = new Map()   // word -> Float32Array (unit) for OOV
+    this.mintedN = new Map()  // word -> how many contexts it has been woven from (for refine)
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
@@ -110,26 +111,50 @@ export class Eye {
     return this.minted.has(w) || this.glove.has(w)
   }
 
-  // Resolve a sentence to an ordered list of words that HAVE a vector, minting OOV
-  // words from context (mean of known-in-glove neighbours) when there is enough signal.
+  // Resolve a sentence to an ordered list of words that HAVE a vector. New words (OOV) are
+  // MINTED from context; words already minted are REFINED toward this context — a coined
+  // word's semantic location is woven from everywhere it is used, not frozen at first sight.
+  // Real GloVe words keep their pristine vector (their location weaves via living positions).
   _resolve(words) {
-    const contextVecs = words.filter((w) => this.glove.has(w)).map((w) => this.glove.vec(w))
+    // unit mean of this sentence's KNOWN (in-GloVe) anchors — the context to mint/refine from
+    const ctx = words.filter((w) => this.glove.has(w)).map((w) => this.glove.vec(w))
+    let ctxMean = null
+    if (ctx.length >= MIN_CONTEXT) {
+      ctxMean = new Float32Array(this.dim)
+      for (const cv of ctx) for (let d = 0; d < this.dim; d++) ctxMean[d] += cv[d]
+      let n = 0
+      for (let d = 0; d < this.dim; d++) { ctxMean[d] /= ctx.length; n += ctxMean[d] * ctxMean[d] }
+      n = Math.sqrt(n) || 1
+      for (let d = 0; d < this.dim; d++) ctxMean[d] /= n
+    }
     const out = []
     for (const w of words) {
-      if (this.has(w)) { out.push(w); continue }
-      if (contextVecs.length >= MIN_CONTEXT) {
-        const v = new Float32Array(this.dim)
-        for (const cv of contextVecs) for (let d = 0; d < this.dim; d++) v[d] += cv[d]
-        let n = 0
-        for (let d = 0; d < this.dim; d++) { v[d] /= contextVecs.length; n += v[d] * v[d] }
-        n = Math.sqrt(n) || 1
-        for (let d = 0; d < this.dim; d++) v[d] /= n
-        this.minted.set(w, v)
+      if (this.glove.has(w)) { out.push(w); continue }     // pristine substrate word
+      if (this.minted.has(w)) {
+        if (ctxMean) this._refineMinted(w, ctxMean)        // weave in this new usage
+        out.push(w)
+      } else if (ctxMean) {
+        this.minted.set(w, Float32Array.from(ctxMean))     // mint from first context
+        this.mintedN.set(w, 1)
         out.push(w)
       }
       // else: not enough context — drop the unknown word (no noise minted)
     }
     return out
+  }
+
+  // Refine a minted word toward a new context — a running average over all its contexts,
+  // floored at 0.03 so the word stays slightly plastic and never fully freezes. The living
+  // position follows via the spring (its anchor is this refined vector).
+  _refineMinted(w, ctxMean) {
+    const v = this.minted.get(w)
+    const n = this.mintedN.get(w) || 1
+    const rate = Math.max(1 / (n + 1), 0.03)
+    let m = 0
+    for (let d = 0; d < this.dim; d++) { v[d] = v[d] * (1 - rate) + ctxMean[d] * rate; m += v[d] * v[d] }
+    m = Math.sqrt(m) || 1
+    for (let d = 0; d < this.dim; d++) v[d] /= m
+    this.mintedN.set(w, n + 1)
   }
 
   // Absorb one sentence: mint OOV, lay T_seq (consecutive) + T_assoc (windowed).
