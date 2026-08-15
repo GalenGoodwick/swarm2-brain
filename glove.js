@@ -33,6 +33,17 @@ export function loadPackedGlove(binPath, vocabPath) {
       const i = idx.get(w)
       return i === undefined ? null : floats.subarray(i * dim, i * dim + dim)
     },
+    // nearest vocab words to a UNIT query vector (cosine == dot; brute force, ~ms)
+    nearest: (q, k = 8) => {
+      const scored = []
+      for (let i = 0; i < words.length; i++) {
+        let d = 0; const o = i * dim
+        for (let j = 0; j < dim; j++) d += floats[o + j] * q[j]
+        scored.push([words[i], d])
+      }
+      scored.sort((a, b) => b[1] - a[1])
+      return scored.slice(0, k).map(([w, s]) => ({ word: w, sim: +s.toFixed(3) }))
+    },
   }
 }
 

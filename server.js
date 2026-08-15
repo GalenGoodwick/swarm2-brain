@@ -5,9 +5,9 @@
 //
 //   node server.js            # PORT=7070 by default
 import { createServer } from 'http'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { Brain, Eye, BRAIN_VERSION } from './brain.js'
+import { Brain, Eye, BRAIN_VERSION, unkey, tokenizeContent } from './brain.js'
 import { loadPackedGlove } from './glove.js'
 import { ENTRY_PROMPT } from './entry-prompt.js'
 import { GUIDE } from './guide.js'
@@ -21,6 +21,16 @@ console.log(`brain loaded: ${glove.size} words, ${glove.dim}d`)
 // crash guards — a single bad tick or request must never take the brain down
 process.on('uncaughtException', (e) => console.error('uncaughtException:', e?.message))
 process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.message))
+
+// PUBLIC IDENTITY — a non-secret, non-reversible id derived from the eye's write-key.
+// Public endpoints (/state, /stream, /common, /search) emit THIS; the raw key, which is
+// the credential that authorizes /speak, is NEVER exposed. Fixes the key-leak.
+const pubOf = (key) => 'e' + createHash('sha256').update(String(key)).digest('hex').slice(0, 12)
+function resolveEye(x) {                 // accept a public id (read-only) or a raw key
+  if (brain.eyes.has(x)) return brain.eyes.get(x)
+  for (const k of brain.eyes.keys()) if (pubOf(k) === x) return brain.eyes.get(k)
+  return null
+}
 
 // ─── persistence (bounded state → never lose the stream on restart) ────────────
 function persist() {
@@ -81,7 +91,7 @@ setInterval(() => {
       const seed = seeds[i % seeds.length]
       const { text } = eye.reverseTournament(10, seed)
       if (text.split(' ').length < 2) continue   // skip dead-end seeds
-      broadcast({ t: Date.now(), eye: id, thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion() })
+      broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion() })
     } catch (e) { console.error(`tick error [${id}]:`, e?.message) }
   }
 }, 2200)
@@ -92,7 +102,7 @@ function speak(eyeId, text) {
   const sentences = (text.match(SENTENCE) || [text]).map((s) => s.trim()).filter(Boolean)
   for (const s of sentences) eye.absorb(s)
   const mp = eye.metaPrecedent({ threads: 40 })
-  broadcast({ t: Date.now(), eye: eyeId, champion: mp.champion, voice: mp.spoken,
+  broadcast({ t: Date.now(), eye: pubOf(eyeId), champion: mp.champion, voice: mp.spoken,
     lens: mp.lens, warm: mp.warmThreads.slice(0, 8), swarm: brain.swarmChampion() })
   return mp
 }
@@ -155,15 +165,69 @@ createServer(async (req, res) => {
   }
 
   if (p === '/champion') {
-    const eye = url.searchParams.get('eye')
-    if (!eye || !brain.eyes.has(eye)) return json(res, { error: 'unknown eye' }, 404)
-    return json(res, brain.eye(eye).metaPrecedent({ threads: 40 }))
+    const q = url.searchParams.get('eye')                 // accepts a public id OR your key
+    const e = q && resolveEye(q)
+    if (!e) return json(res, { error: 'unknown eye' }, 404)
+    return json(res, { pub: pubOf(e.id), ...e.metaPrecedent({ threads: 40 }) })
   }
 
   if (p === '/state') {
     const eyes = {}
-    for (const [id, e] of brain.eyes) eyes[id] = { champion: e.champion, tick: e.tick, seq: e.Tseq.size, assoc: e.Tassoc.size }
+    for (const [id, e] of brain.eyes) eyes[pubOf(id)] = { champion: e.champion, tick: e.tick, seq: e.Tseq.size, assoc: e.Tassoc.size }
     return json(res, { version: BRAIN_VERSION, swarm: brain.swarmChampion(), eyes })
+  }
+
+  // CONSENSUS vs DISTINCT — the shared mind of the room vs what each eye uniquely brought.
+  // Consensus is a DISTINCT-EYE COUNT (not a sum): a thread warm in many eyes is common;
+  // one screamed 500x by a single eye is not. Ranks by how many eyes carry each thread.
+  if (p === '/common') {
+    const minEyes = Math.max(2, parseInt(url.searchParams.get('k') || '2'))
+    const edgeEyes = new Map(), wordEyes = new Map()      // -> Set<pub> that carry it warmly
+    for (const [key, eye] of brain.eyes) {
+      const pub = pubOf(key)
+      for (const ek of eye.Tassoc.keys()) {
+        let s = edgeEyes.get(ek); if (!s) { s = new Set(); edgeEyes.set(ek, s) }
+        s.add(pub)
+        for (const w of unkey(ek)) { let ws = wordEyes.get(w); if (!ws) { ws = new Set(); wordEyes.set(w, ws) } ws.add(pub) }
+      }
+    }
+    const rank = (m, fmt) => [...m.entries()].filter(([, s]) => s.size >= minEyes)
+      .map(([x, s]) => ({ ...fmt(x), eyes: s.size })).sort((a, b) => b.eyes - a.eyes).slice(0, 60)
+    const consensusWords = rank(wordEyes, (w) => ({ word: w }))
+    const consensusThreads = rank(edgeEyes, (ek) => ({ thread: unkey(ek).join('→') }))
+    const distinct = {}                                   // pub -> words only that eye brought
+    for (const [w, s] of wordEyes) if (s.size === 1) { const pub = [...s][0]; (distinct[pub] ||= []).push(w) }
+    for (const pub in distinct) distinct[pub] = distinct[pub].slice(0, 20)
+    return json(res, { eyes: brain.eyes.size, minEyes, consensusWords, consensusThreads, distinct })
+  }
+
+  // VECTOR SEARCH — dig into the brain for research-pattern alignment. Query with a word,
+  // a phrase (?q=), or an eye (?eye=<pub|key>); returns nearest EYES (who aligns with you)
+  // and nearest vocab words (semantic neighbors). Query and tournament are the same cosine.
+  if (p === '/search') {
+    const qEye = url.searchParams.get('eye')
+    const qText = url.searchParams.get('q')
+    let vec = null
+    if (qEye) { const e = resolveEye(qEye); vec = e && e.Tassoc.size ? e.centroid() : null }
+    else if (qText) {
+      const ws = tokenizeContent(qText).map((w) => glove.vec(w)).filter(Boolean)
+      if (ws.length) {
+        vec = new Float32Array(glove.dim)
+        for (const v of ws) for (let i = 0; i < glove.dim; i++) vec[i] += v[i]
+        let n = 0; for (let i = 0; i < glove.dim; i++) n += vec[i] * vec[i]; n = Math.sqrt(n) || 1
+        for (let i = 0; i < glove.dim; i++) vec[i] /= n
+      }
+    }
+    if (!vec) return json(res, { error: 'query with ?q=<words> or ?eye=<pub|key>' }, 400)
+    const eyes = []
+    for (const [key, eye] of brain.eyes) {
+      if (!eye.Tassoc.size) continue
+      const c = eye.centroid()
+      let d = 0; for (let i = 0; i < glove.dim; i++) d += c[i] * vec[i]
+      eyes.push({ eye: pubOf(key), champion: eye.champion, align: +d.toFixed(3) })
+    }
+    eyes.sort((a, b) => b.align - a.align)
+    return json(res, { alignedEyes: eyes.slice(0, 10), nearestWords: glove.nearest(vec, 12) })
   }
 
   json(res, { error: 'not found' }, 404)
