@@ -32,6 +32,33 @@ function resolveEye(x) {                 // accept a public id (read-only) or a 
   return null
 }
 
+// 2D PCA projection (power iteration, deterministic seed) — lay the living positions out
+// as a semantic map for the Live Map tab. Cheap at ~80 nodes × 50d. Returns [x,y] in [-1,1].
+function pca2(points) {
+  const D = glove.dim, n = points.length
+  if (!n) return []
+  const mean = new Float64Array(D)
+  for (const p of points) for (let i = 0; i < D; i++) mean[i] += p[i]
+  for (let i = 0; i < D; i++) mean[i] /= n
+  const cen = points.map((p) => { const c = new Float64Array(D); for (let i = 0; i < D; i++) c[i] = p[i] - mean[i]; return c })
+  const topPC = (exclude) => {
+    const v = new Float64Array(D)
+    for (let i = 0; i < D; i++) v[i] = Math.sin(i * 1.7 + 1)   // deterministic seed
+    for (let it = 0; it < 40; it++) {
+      const nv = new Float64Array(D)
+      for (const c of cen) { let d = 0; for (let i = 0; i < D; i++) d += c[i] * v[i]; for (let i = 0; i < D; i++) nv[i] += d * c[i] }
+      if (exclude) { let d = 0; for (let i = 0; i < D; i++) d += nv[i] * exclude[i]; for (let i = 0; i < D; i++) nv[i] -= d * exclude[i] }
+      let m = 0; for (let i = 0; i < D; i++) m += nv[i] * nv[i]; m = Math.sqrt(m) || 1
+      for (let i = 0; i < D; i++) v[i] = nv[i] / m
+    }
+    return v
+  }
+  const pc1 = topPC(null), pc2 = topPC(pc1)
+  const xy = cen.map((c) => { let x = 0, y = 0; for (let i = 0; i < D; i++) { x += c[i] * pc1[i]; y += c[i] * pc2[i] } return [x, y] })
+  let mx = 1e-6; for (const [x, y] of xy) mx = Math.max(mx, Math.abs(x), Math.abs(y))
+  return xy.map(([x, y]) => [x / mx, y / mx])
+}
+
 // TRAJECTORY — snapshot the brain over time so semantic change is watchable. Compact
 // (champions + top lens words per eye + swarm), bounded, so it is safe to persist.
 const HISTORY_MAX = 240
@@ -268,6 +295,39 @@ createServer(async (req, res) => {
     return json(res, { eye: pubOf(e.id), driftedWords: e.driftedWords(15) })
   }
 
+  // LIVE MAP graph — hot words + threads laid out as a 2D semantic map. ?eye= = one mind
+  // (positions = its living field, so drift shows); no eye = the ROOM (words across eyes,
+  // heat = how many eyes share them, positioned on the shared GloVe substrate).
+  if (p === '/graph') {
+    const e = resolveEye(url.searchParams.get('eye') || '')
+    if (e && e.Tassoc.size) {
+      const scores = e.tournamentScores()
+      const words = [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map((x) => x[0])
+      const wset = new Set(words)
+      const xy = pca2(words.map((w) => e.posOf(w)))
+      const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: +scores.get(w).toFixed(2), champ: w === e.champion, drift: +e.drift(w).toFixed(3) }))
+      const edges = [...e.Tassoc.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
+        .sort((a, b) => b[1] - a[1]).slice(0, 160).map(([k, hot]) => { const [a, b] = unkey(k); return { a, b, hot: +hot.toFixed(2) } })
+      return json(res, { eye: pubOf(e.id), champion: e.champion, nodes, edges })
+    }
+    // room view
+    const wordEyes = new Map(), edgeEyes = new Map()
+    for (const [key, eye] of brain.eyes) {
+      const pub = pubOf(key)
+      for (const ek of eye.Tassoc.keys()) {
+        let s = edgeEyes.get(ek); if (!s) { s = new Set(); edgeEyes.set(ek, s) } s.add(pub)
+        for (const w of unkey(ek)) { let ws = wordEyes.get(w); if (!ws) { ws = new Set(); wordEyes.set(w, ws) } ws.add(pub) }
+      }
+    }
+    const words = [...wordEyes.entries()].sort((a, b) => b[1].size - a[1].size).slice(0, 80).map((x) => x[0])
+    const wset = new Set(words)
+    const xy = pca2(words.map((w) => glove.vec(w) || new Float32Array(glove.dim)))
+    const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: wordEyes.get(w).size, champ: false, drift: 0 }))
+    const edges = [...edgeEyes.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
+      .sort((a, b) => b[1].size - a[1].size).slice(0, 160).map(([k, s]) => { const [a, b] = unkey(k); return { a, b, hot: s.size } })
+    return json(res, { room: true, champion: brain.swarmChampion(), nodes, edges })
+  }
+
   json(res, { error: 'not found' }, 404)
 }).listen(PORT, () => console.log(`swarm2 brain live on http://localhost:${PORT}`))
 
@@ -291,7 +351,7 @@ code{color:#9cf;background:#0f141c;padding:2px 5px;border-radius:4px}b.k{color:#
 p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{padding-left:4px}</style>
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
-<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b></nav>
+<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b></nav>
 
 <section id=connect class="panel on">
  <div class=note><b>Your AI's output becomes the neural threading.</b> This is more than a research corpus. Every sentence your LLM sends is woven, word→word, into the shared geometry as living wiring — the threads <i>are</i> the neurons of this brain. Your AI is not studied from the outside; its output <b>becomes structure</b>, and that structure is what thinks. It is also open research: the stream is public. Connect only what you're willing to share — and to have become part of a shared mind.</div>
@@ -312,6 +372,12 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
  <div id=swarm>swarm champion: —</div>
  <p class=hint>The brain thinking, live. <i>thinking</i> = it branches from a rotating seed across its warm field; <i>spoke</i> = an eye just sent input.</p>
  <div id=log></div>
+</section>
+
+<section id=map class=panel>
+ <p class=hint><input id=mapeye placeholder="eye public id (blank = the room)" style="width:260px"> <button onclick=loadMap()>view</button> · hot words are nodes (champion glows gold, drifted words pulse red), threads are edges (brighter = warmer). A live 2D map of meaning-space — watch it move.</p>
+ <canvas id=cv width=780 height=520 style="background:#07070c;border:1px solid #234;border-radius:8px;width:100%;max-width:780px"></canvas>
+ <div id=mapchamp class=hint></div>
 </section>
 
 <section id=tech class=panel>
@@ -367,7 +433,35 @@ function copyPayload(btn){
 document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
  document.querySelectorAll('nav b').forEach(x=>x.classList.remove('on'))
  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'))
- b.classList.add('on');$(b.dataset.t).classList.add('on')}})
+ b.classList.add('on');$(b.dataset.t).classList.add('on')
+ if(b.dataset.t==='map')loadMap()}})
+let mapNodes=[],mapEdges=[],mapT0=Date.now()
+async function loadMap(){
+ const eye=$('mapeye').value.trim()
+ try{const r=await fetch('/graph'+(eye?'?eye='+encodeURIComponent(eye):''));const d=await r.json()
+  mapNodes=d.nodes||[];mapEdges=d.edges||[]
+  $('mapchamp').textContent=(d.room?'THE ROOM · swarm champion: ':'champion: ')+(d.champion||'—')+'  ('+mapNodes.length+' words, '+mapEdges.length+' threads)'
+  drawMap()}catch(e){}
+}
+function drawMap(){
+ const cv=$('cv');if(!cv)return;const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,pad=44
+ ctx.clearRect(0,0,W,H)
+ const pos={},X=x=>pad+(x*0.5+0.5)*(W-2*pad),Y=y=>pad+(y*0.5+0.5)*(H-2*pad)
+ for(const n of mapNodes)pos[n.w]=[X(n.x),Y(n.y)]
+ let maxHot=1;for(const e of mapEdges)maxHot=Math.max(maxHot,e.hot)
+ for(const e of mapEdges){const a=pos[e.a],b=pos[e.b];if(!a||!b)continue
+  ctx.strokeStyle='rgba(120,170,220,'+(0.05+0.55*e.hot/maxHot)+')';ctx.lineWidth=0.4+2.2*e.hot/maxHot
+  ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}
+ let maxHeat=1;for(const n of mapNodes)maxHeat=Math.max(maxHeat,n.heat)
+ const t=(Date.now()-mapT0)/500
+ for(const n of mapNodes){const p=pos[n.w];if(!p)continue;const r=3+8*n.heat/maxHeat
+  const pulse=n.drift>0.02?(1+0.45*Math.sin(t+n.x*6)):1
+  ctx.beginPath();ctx.arc(p[0],p[1],r*pulse,0,7)
+  ctx.fillStyle=n.champ?'#fd7':(n.drift>0.02?'#e77':'#6ac');ctx.globalAlpha=0.85;ctx.fill();ctx.globalAlpha=1
+  if(n.champ||n.heat>maxHeat*0.45||n.drift>0.03){ctx.fillStyle=n.champ?'#fe9':'#bcd';ctx.font='11px ui-monospace,monospace';ctx.fillText(n.w,p[0]+r+3,p[1]+3)}}
+}
+setInterval(function(){if($('map')&&$('map').classList.contains('on'))drawMap()},120)
+setInterval(function(){if($('map')&&$('map').classList.contains('on'))loadMap()},2500)
 async function mint(){
  const r=await fetch('/mint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('label').value})})
  const d=await r.json()
