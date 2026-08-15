@@ -456,6 +456,24 @@ export class Eye {
       .map((x) => x[0])
   }
 
+  // DRIFT — how far a word has UNTETHERED from its given location (GloVe or minted anchor).
+  // 0 = still at anchor, 1 = orthogonal. This residual is the amount the word's MEANING has
+  // moved inside this brain — the semantic-change signal. Mild untethering is the point.
+  drift(w) {
+    const p = this.pos.get(w), g = this.vecOf(w)
+    if (!p || !g) return 0
+    let d = 0
+    for (let i = 0; i < this.dim; i++) d += p[i] * g[i]
+    return 1 - d
+  }
+  // the words whose meaning has moved most in this brain right now
+  driftedWords(k = 12) {
+    return [...this.pos.keys()]
+      .map((w) => ({ word: w, drift: +this.drift(w).toFixed(3) }))
+      .sort((a, b) => b.drift - a.drift)
+      .slice(0, k)
+  }
+
   // THE META PRECEDENT — the consciousness state handed back to a plugged-in AI to set
   // its context. Bounded by construction (STATE_WINDOW), so it is a small, constant
   // preamble that never bloats regardless of how much has been said.

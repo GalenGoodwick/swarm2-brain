@@ -32,6 +32,21 @@ function resolveEye(x) {                 // accept a public id (read-only) or a 
   return null
 }
 
+// TRAJECTORY — snapshot the brain over time so semantic change is watchable. Compact
+// (champions + top lens words per eye + swarm), bounded, so it is safe to persist.
+const HISTORY_MAX = 240
+let history = []
+function snapshot() {
+  const eyes = []
+  for (const [key, eye] of brain.eyes) {
+    if (!eye.Tassoc.size) continue
+    eyes.push({ eye: pubOf(key), champion: eye.champion, lens: eye.decodeCentroid(5) })
+  }
+  history.push({ t: Date.now(), swarm: brain.swarmChampion(), eyes })
+  if (history.length > HISTORY_MAX) history.shift()
+}
+setInterval(snapshot, 30000)
+
 // ─── persistence (bounded state → never lose the stream on restart) ────────────
 function persist() {
   const eyes = {}
@@ -46,12 +61,14 @@ function persist() {
       // the state file and stalled/OOM'd the 30s write. Threads + minted are the identity.
     }
   }
-  try { writeFileSync(STATE_PATH, JSON.stringify({ eyes })) } catch (e) { console.log('persist err', e.message) }
+  try { writeFileSync(STATE_PATH, JSON.stringify({ eyes, history })) } catch (e) { console.log('persist err', e.message) }
 }
 function restore() {
   if (!existsSync(STATE_PATH)) return
   try {
-    const { eyes } = JSON.parse(readFileSync(STATE_PATH, 'utf8'))
+    const parsed = JSON.parse(readFileSync(STATE_PATH, 'utf8'))
+    const { eyes } = parsed
+    history = Array.isArray(parsed.history) ? parsed.history.slice(-HISTORY_MAX) : []
     for (const [id, s] of Object.entries(eyes)) {
       const eye = brain.eye(id)
       eye.tick = s.tick || 0
@@ -230,6 +247,25 @@ createServer(async (req, res) => {
     }
     eyes.sort((a, b) => b.align - a.align)
     return json(res, { alignedEyes: eyes.slice(0, 10), nearestWords: glove.nearest(vec, 12) })
+  }
+
+  // TRAJECTORY VIEW — the brain over time. No arg = full history; ?eye= = one eye's path
+  // (champion + lens at each snapshot), so you can watch its identity/semantics move.
+  if (p === '/trajectory') {
+    const q = url.searchParams.get('eye')
+    if (q) {
+      const pub = brain.eyes.has(q) ? pubOf(q) : q
+      const points = history.map((h) => { const e = h.eyes.find((x) => x.eye === pub); return e ? { t: h.t, champion: e.champion, lens: e.lens } : null }).filter(Boolean)
+      return json(res, { eye: pub, points })
+    }
+    return json(res, { snapshots: history.length, everySec: 30, history })
+  }
+
+  // DRIFT — the words whose meaning has moved most from their anchor (semantic change now).
+  if (p === '/drift') {
+    const e = resolveEye(url.searchParams.get('eye') || '')
+    if (!e) return json(res, { error: 'eye required (?eye=<pub|key>)' }, 400)
+    return json(res, { eye: pubOf(e.id), driftedWords: e.driftedWords(15) })
   }
 
   json(res, { error: 'not found' }, 404)

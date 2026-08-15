@@ -290,4 +290,15 @@ function randVecSpace(nWords, dim, seed) {
   ok('refinement counter grows with use', eye.mintedN.get('kraken') === 9)
 }
 
+// ── Gate 16: drift measures a word untethering from its anchor (semantic change) ──
+{
+  const g = mockProvider({ champ: [1, 0, 0], word: [0.9, 0.44, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.Tassoc.set('champ word', 1)
+  eye.posOf('word'); eye.posOf('champ')          // seed positions at their anchors
+  ok('drift is ~0 at the anchor', eye.drift('word') < 0.01)
+  for (let i = 0; i < 20; i++) eye.shift('champ') // champ pulls 'word', untethering it
+  ok('drift grows as the word untethers', eye.drift('word') > 0.02)
+}
+
 console.log(`\n  ${passed} gates passed.`)
