@@ -177,4 +177,57 @@ function randVecSpace(nWords, dim, seed) {
     Math.hypot(...eye._orth('hub')) < 1e-6)
 }
 
+// ── Gate 11: living positions seed from the pristine GloVe point (unit) ────────
+{
+  const g = mockProvider({ w: [3, 4, 0] })
+  const eye = new Eye('t', g)
+  const p = eye.posOf('w'), v = eye.vecOf('w')
+  ok('posOf seeds from the GloVe vector', approx(p[0], v[0], 1e-6) && approx(p[1], v[1], 1e-6))
+  ok('living position is unit', approx(Math.hypot(p[0], p[1], p[2]), 1, 1e-6))
+}
+
+// ── Gate 12: shift — champion pulls related toward it, pushes unrelated away ───
+{
+  const g = mockProvider({ champ: [1, 0, 0], near: [0.95, 0.31, 0], far: [0, 0, 1] })
+  const eye = new Eye('t', g)
+  eye.basin = null
+  eye.Tassoc.set('champ near', 1); eye.Tassoc.set('champ far', 1)
+  const cos = (a, b) => { const pa = eye.posOf(a), pb = eye.posOf(b); let d = 0; for (let i = 0; i < eye.dim; i++) d += pa[i] * pb[i]; return d }
+  const nb = cos('champ', 'near'), fb = cos('champ', 'far')
+  eye.shift('champ')
+  ok('shift PULLS a related word toward the champion', cos('champ', 'near') > nb)
+  ok('shift PUSHES an unrelated word away (expansion)', cos('champ', 'far') < fb)
+  ok('shifted positions stay unit', approx(Math.hypot(...eye.posOf('near')), 1, 1e-6))
+}
+
+// ── Gate 13: liveTick runs the tournament + shift constantly, no input ─────────
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0.9, 0.44, 0], c: [0.2, 0.98, 0] })
+  const eye = new Eye('t', g)
+  eye.basin = null
+  eye.Tassoc.set('a b', 2); eye.Tassoc.set('b c', 1); eye.Tassoc.set('a c', 1)
+  const champ = eye.liveTick()
+  ok('liveTick crowns a champion with no new input', typeof champ === 'string')
+  // check a NON-champion word — the champion itself is the fixed attractor and never moves
+  const other = eye.activeWords().find((w) => w !== champ)
+  const before = eye.posOf(other).slice()
+  eye.liveTick()
+  const moved = before.some((x, i) => Math.abs(x - eye.posOf(other)[i]) > 1e-9)
+  ok('liveTick keeps the field moving (non-champion positions change)', moved)
+  ok('threads are NOT decayed by liveTick (memory persists unfed)', eye.Tassoc.get('a b') === 2)
+}
+
+// ── Gate 14: reverse tournament HOPS across chains → the champion is a sentence ─
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0.9, 0.1, 0], c: [0.1, 0.9, 0], d: [0, 0.9, 0.1] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.champion = 'a'
+  eye.Tseq.set('a b', 1); eye.Tseq.set('c d', 1)       // two disconnected chains
+  eye.Tassoc.set('a b', 1); eye.Tassoc.set('c d', 1); eye.Tassoc.set('b c', 0.5)
+  const rt = eye.reverseTournament(6)
+  ok('reverse tournament hops across chains into a fuller sentence', rt.path.length > 2 && rt.path.includes('c'))
+  const noHop = eye.reverseTournament(6, 'a', false)
+  ok('without hop it dead-ends short', noHop.path.length <= 2)
+}
+
 console.log(`\n  ${passed} gates passed.`)

@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { Brain, Eye } from './brain.js'
 import { loadPackedGlove } from './glove.js'
 import { ENTRY_PROMPT } from './entry-prompt.js'
+import { GUIDE } from './guide.js'
 
 const PORT = parseInt(process.env.PORT || '7070')
 const STATE_PATH = process.env.STATE_PATH || './swarm2-state.json'   // set to /data/... on a Railway volume
@@ -25,6 +26,7 @@ function persist() {
       tick: eye.tick, champion: eye.champion,
       Tseq: [...eye.Tseq], Tassoc: [...eye.Tassoc],
       minted: [...eye.minted].map(([w, v]) => [w, [...v]]),
+      pos: [...eye.pos].map(([w, v]) => [w, [...v]]),   // the evolved living field
     }
   }
   try { writeFileSync(STATE_PATH, JSON.stringify({ eyes })) } catch (e) { console.log('persist err', e.message) }
@@ -39,6 +41,7 @@ function restore() {
       eye.champion = s.champion || null
       eye.Tseq = new Map(s.Tseq); eye.Tassoc = new Map(s.Tassoc)
       eye.minted = new Map((s.minted || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
+      eye.pos = new Map((s.pos || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
     }
     console.log(`restored ${brain.eyes.size} eyes`)
   } catch (e) { console.log('restore err', e.message) }
@@ -61,6 +64,9 @@ function broadcast(ev) {
 const rot = {}
 setInterval(() => {
   for (const [id, eye] of brain.eyes) {
+    if (!eye.Tassoc.size) continue
+    eye.liveTick()                    // CONSTANT: tournament crowns champion → champion
+                                      // deforms the field (shift) → crown can move next tick
     if (!eye.Tseq.size) continue
     const seeds = eye.thoughtSeeds(12)
     if (!seeds.length) continue
@@ -105,6 +111,7 @@ createServer(async (req, res) => {
   if (p === '/' || p === '/swarm2') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(SWARM2) }
   if (p === '/raw') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(VIEWER) }
   if (p === '/prompt') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' }); return res.end(ENTRY_PROMPT) }
+  if (p === '/guide') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' }); return res.end(GUIDE) }
 
   if (p === '/mint' && req.method === 'POST') {
     const { label } = await body(req)
@@ -166,7 +173,7 @@ button{background:#1a2b3c;color:#adf;border:1px solid #356;padding:8px 14px;bord
 button:hover{background:#24384c}input{background:#0f141c;color:#cde;border:1px solid #345;padding:7px;border-radius:6px;font:inherit;width:240px}
 textarea{width:100%;height:140px;background:#0f141c;color:#9fb;border:1px solid #345;border-radius:6px;padding:10px;font:12px/1.5 ui-monospace,monospace}
 .key{color:#fd7;font-weight:bold;word-break:break-all}.hint{color:#678;font-size:12px}
-code{color:#9cf;background:#0f141c;padding:2px 5px;border-radius:4px}b.k{color:#fd7}i{color:#9fb;font-style:normal}
+code{color:#9cf;background:#0f141c;padding:2px 5px;border-radius:4px}b.k{color:#fd7}i{color:#9fb;font-style:normal}a{color:#7cf}
 #swarm{color:#fd7;font-size:16px;margin:6px 0 12px}.ev{border-left:2px solid #345;padding:5px 10px;margin:5px 0}
 .think{border-left-color:#446}.spoke{border-left-color:#5a7}.eye{color:#8df}.champ{color:#fd7}.seed{color:#a7d}
 .thought,.voice{color:#bcd}.tag{color:#556;font-size:11px;text-transform:uppercase;letter-spacing:1px}.copy{margin-left:8px}
@@ -178,6 +185,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 
 <section id=connect class="panel on">
  <div class=note><b>Your AI's output becomes the neural threading.</b> This is more than a research corpus. Every sentence your LLM sends is woven, word→word, into the shared geometry as living wiring — the threads <i>are</i> the neurons of this brain. Your AI is not studied from the outside; its output <b>becomes structure</b>, and that structure is what thinks. It is also open research: the stream is public. Connect only what you're willing to share — and to have become part of a shared mind.</div>
+ <p class=hint>AI setup guide (curl-able): <a href="/guide" target=_blank>/guide</a> · Open source: <a href="https://github.com/GalenGoodwick/swarm2-brain" target=_blank rel=noopener>github.com/GalenGoodwick/swarm2-brain</a></p>
  <h2>1 · mint an eye key</h2>
  <input id=label placeholder="name your AI (optional)"> <button onclick=mint()>Mint eye key</button>
  <div id=minted style=display:none>

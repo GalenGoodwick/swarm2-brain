@@ -71,7 +71,23 @@ export class Eye {
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
     this.frontier = true              // cut the basin in champion selection (rung 2)
-    this._orthCache = new Map()
+    // LIVING POSITIONS (m28): each active word's position starts at its pristine GloVe
+    // point and is reshaped by shift() as the champion deforms the field. GloVe points
+    // stay fixed (the seed); the tournament runs on these moving positions, so the
+    // champion evolves tick to tick. Not cached — shift() mutates them every tick.
+    this.pos = new Map()
+  }
+
+  // A word's LIVING position (unit). Lazily seeded from its pristine GloVe/minted vector.
+  posOf(w) {
+    let p = this.pos.get(w)
+    if (!p) {
+      const v = this.vecOf(w)
+      if (!v) return null
+      p = Float32Array.from(v)          // copy so shift() can mutate without touching GloVe
+      this.pos.set(w, p)
+    }
+    return p
   }
 
   vecOf(w) {
@@ -140,7 +156,7 @@ export class Eye {
   }
 
   cos(a, b) {
-    const va = this.vecOf(a), vb = this.vecOf(b)
+    const va = this.posOf(a), vb = this.posOf(b)
     if (!va || !vb) return 0
     let d = 0
     for (let i = 0; i < this.dim; i++) d += va[i] * vb[i]
@@ -176,7 +192,7 @@ export class Eye {
     const c = new Float32Array(this.dim)
     for (const [k, hot] of this.Tassoc) {
       const [a, b] = unkey(k)
-      const va = this.vecOf(a), vb = this.vecOf(b)
+      const va = this.posOf(a), vb = this.posOf(b)
       if (!va || !vb) continue
       for (let d = 0; d < this.dim; d++) c[d] += hot * 0.5 * (va[d] + vb[d])
     }
@@ -188,13 +204,12 @@ export class Eye {
     return c
   }
 
-  // Unit component of a word's vector in the ORTHOGONAL COMPLEMENT of the basin.
+  // Unit component of a word's LIVING position in the ORTHOGONAL COMPLEMENT of the basin.
   // Generic hub words live IN the basin, so their orthogonal component is ~0 — the
-  // reverse tournament's evaluators see nothing to agree with and cut them. Cached
-  // (glove + basin are fixed; minted vectors are stable once minted).
+  // reverse tournament's evaluators see nothing to agree with and cut them. Uncached:
+  // positions move every tick via shift().
   _orth(w) {
-    if (this._orthCache.has(w)) return this._orthCache.get(w)
-    const v = this.vecOf(w)
+    const v = this.posOf(w)
     if (!v) return null
     const o = new Float32Array(this.dim)
     if (this.basin) {
@@ -208,7 +223,6 @@ export class Eye {
     for (let i = 0; i < this.dim; i++) n += o[i] * o[i]
     n = Math.sqrt(n)
     if (n > 1e-6) for (let i = 0; i < this.dim; i++) o[i] /= n   // else ~0 (basin word)
-    this._orthCache.set(w, o)
     return o
   }
   basinLeak(w) {
@@ -233,19 +247,37 @@ export class Eye {
   // hub successor (0 orthogonal component) is cut and the thread reaches the sparse
   // frontier (m28). The winner advances the thread; expand again. This is both the
   // spoken sentence and the champion's decompression.
-  reverseTournament(len = WALK_LEN, seed = this.champion) {
+  reverseTournament(len = WALK_LEN, seed = this.champion, hop = true) {
     if (!seed) return { path: [], text: '' }
     const evaluators = this.activeWords()
     const path = [seed]
     const used = new Set(path)
-    let cur = seed
-    for (let step = 0; step < len; step++) {
-      const cell = []
+    const successors = (w) => {
+      const out = []
       for (const [k, hot] of this.Tseq) {
         const [a, b] = unkey(k)
-        if (a === cur && !used.has(b)) cell.push([b, hot])
+        if (a === w && !used.has(b)) out.push([b, hot])
       }
-      if (!cell.length) break
+      return out
+    }
+    let cur = seed
+    for (let step = 0; step < len; step++) {
+      const cell = successors(cur)
+      if (!cell.length) {
+        if (!hop) break
+        // HOP: no grammatical successor here — jump to the NEAREST unused word that can
+        // still continue a chain, so the champion's decompression weaves across the whole
+        // warm field into a full sentence instead of a two-word stub.
+        let jump = null, bestC = -Infinity
+        for (const w of evaluators) {
+          if (used.has(w) || !successors(w).length) continue
+          const c = this.cos(cur, w)
+          if (c > bestC) { bestC = c; jump = w }
+        }
+        if (jump == null) break
+        path.push(jump); used.add(jump); cur = jump
+        continue
+      }
       let next = null, bestS = -Infinity
       for (const [cand, hot] of cell) {
         // evaluators judge the candidate from their basin-orthogonal positions
@@ -266,6 +298,43 @@ export class Eye {
   }
   speak(len = WALK_LEN) { return this.reverseTournament(len).text }
 
+  // SHIFT (m28) — the champion DEFORMS the field. It pulls behaviourally-related words'
+  // living positions toward it (champion execution / convergence) and pushes unrelated
+  // words apart (the reverse-tournament EXPANSION that keeps the field open and stops
+  // any one attractor from swallowing everything). GloVe points never move — only these
+  // living positions. This is what makes the champion evolve between inputs.
+  shift(champ = this.champion, LR = 0.1, HI = 0.7, LO = 0.2) {
+    const c = this.posOf(champ)
+    if (!c) return
+    for (const w of this.activeWords()) {
+      if (w === champ) continue
+      const p = this.posOf(w)
+      if (!p) continue
+      let s = 0
+      for (let i = 0; i < this.dim; i++) s += p[i] * c[i]     // cosine (unit vectors)
+      if (s > HI) for (let i = 0; i < this.dim; i++) p[i] += LR * s * (c[i] - p[i])   // pull related
+      else if (s < LO) for (let i = 0; i < this.dim; i++) p[i] -= 0.03 * (c[i] - p[i]) // push unrelated
+      let n = 0
+      for (let i = 0; i < this.dim; i++) n += p[i] * p[i]
+      n = Math.sqrt(n) || 1
+      for (let i = 0; i < this.dim; i++) p[i] /= n            // renormalize to the unit sphere
+    }
+    this._centroid = null
+  }
+
+  // THE LIVING TICK — runs constantly, with or without new input: the tournament crowns
+  // the champion, the champion deforms the field (shift = pull + reverse-tournament
+  // expansion), and the crown can move next tick because the positions moved. No thread
+  // decay here (that is tied to input in absorb) — so an unfed eye settles rather than
+  // erasing; a fed eye keeps evolving.
+  liveTick() {
+    if (!this.Tassoc.size) return null
+    this.champion = this.tournamentChampion()
+    if (this.champion) this.shift(this.champion)
+    this._centroid = null
+    return this.champion
+  }
+
   activeWords() {
     const s = new Set()
     for (const k of this.Tassoc.keys()) { const [a, b] = unkey(k); s.add(a); s.add(b) }
@@ -285,7 +354,7 @@ export class Eye {
     const c = this.centroid()
     return this.activeWords()
       .map((w) => {
-        const v = this.vecOf(w)
+        const v = this.posOf(w)
         let d = 0
         if (v) for (let i = 0; i < this.dim; i++) d += v[i] * c[i]
         return [w, d]
