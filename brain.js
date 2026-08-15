@@ -21,6 +21,13 @@ export const STATE_WINDOW = 5000 // max hot threads PER typed set (identity + vo
 export const WINDOW = 2          // T_assoc reach (T_seq is always 1)
 export const EVAL_CAP = 48       // bounded evaluator sample for the reverse walk (perf)
 export const SWARM_DECAY = 0.985 // per swarm-input recency decay of an eye's swarm weight
+// The Unity Chant tournament (ported from the cradle's eye.js): candidates compete in
+// CELLS judged by NUM_EVALUATORS evaluators (two-pass: perceive, then shift toward the
+// deliberation field and re-vote); cell winners ADVANCE through CHAMP_TIERS to the champion.
+export const CELL_SIZE = 5
+export const CHAMP_TIERS = 4
+export const NUM_EVALUATORS = 5
+export const CAND_POOL = 25       // top candidates (by centrality) entering the tournament
 export const MIN_CONTEXT = 3     // OOV needs >= this many known words to mint
 export const WALK_LEN = 12
 // HEBBIAN + JIGGLE SPRING (the fuller loop). Threads reshape the geometry the
@@ -42,6 +49,10 @@ export const FUNCTION_WORDS = new Set([
   'who', 'how', 'why', 'about', 'into', 'out', 'over', 'from', 'will', 'would',
   'could', 'should', 'can', 'may', 'all', 'any', 'some', 'one', 'two', 'like',
   'just', 'very', 'been', 'being', 'were',
+  // short function words — thread + speak, but must never be crowned champion
+  'a', 'i', 'is', 'it', 'of', 'to', 'in', 'on', 'at', 'an', 'as', 'be', 'by', 'do',
+  'or', 'no', 'so', 'we', 'he', 'me', 'my', 'us', 'up', 'am', 'if', 'off', 'our',
+  'am', 'im', 'yes', 'get', 'got', 'now', 'new', 'way', 'too', 'own',
 ])
 
 const key = (a, b) => a + ' ' + b
@@ -229,13 +240,90 @@ export class Eye {
     }
     return score
   }
+  // THE CHAMPION — crowned by the real Unity Chant tournament (ported from eye.js), not a
+  // flat argmax. Top content candidates enter; they compete in cells judged by evaluator
+  // panels (two-pass deliberation); winners advance through tiers until one remains.
   tournamentChampion() {
-    let best = null, bestS = -Infinity
-    for (const [w, s] of this.tournamentScores()) {
-      if (FUNCTION_WORDS.has(w)) continue   // function words thread + speak, but can't be crowned
-      if (s > bestS) { bestS = s; best = w }
+    const scores = this.tournamentScores()
+    let cands = [...scores.keys()].filter((w) => !FUNCTION_WORDS.has(w))
+    if (cands.length <= 1) return cands[0] || null
+    cands.sort((a, b) => scores.get(b) - scores.get(a))
+    cands = cands.slice(0, CAND_POOL)
+    let current = cands
+    for (let tier = 0; tier < CHAMP_TIERS && current.length > 1; tier++) {
+      current = this._runTier(current, scores)
     }
-    return best
+    return current[0] || null
+  }
+  // one tier: round-robin candidates into cells (spreads the strong ones so they must win
+  // a real bracket, not just top the global sum), run each cell, collect winners.
+  _runTier(cands, scores) {
+    const numCells = Math.max(1, Math.ceil(cands.length / CELL_SIZE))
+    const cells = Array.from({ length: numCells }, () => [])
+    cands.forEach((w, i) => cells[i % numCells].push(w))
+    return cells.map((cell) => (cell.length === 1 ? cell[0] : this._runCell(cell, scores)))
+  }
+  // one cell: 5 evaluators score candidates from their positions (Pass 1), shift 20% toward
+  // the deliberation field and re-score (Pass 2), then vote. Most votes wins (ties → score).
+  _runCell(cands, scores) {
+    const evals = this._pickEvaluators(NUM_EVALUATORS, cands, scores)
+    if (!evals.length) return cands[0]
+    const sc = cands.map((c) => evals.map((ev) => this._evaluatorScore(ev, c)))
+    // Pass 1 preferences → deliberation field (centroid of preferred candidates' positions)
+    const field = new Float32Array(this.dim)
+    let k = 0
+    for (let e = 0; e < evals.length; e++) {
+      let bi = 0, bs = -Infinity
+      for (let c = 0; c < cands.length; c++) if (sc[c][e] > bs) { bs = sc[c][e]; bi = c }
+      const v = this.posOf(cands[bi]); if (v) { for (let d = 0; d < this.dim; d++) field[d] += v[d]; k++ }
+    }
+    // Pass 2 — shift each evaluator 20% toward the field, re-score by proximity
+    if (k) {
+      for (let d = 0; d < this.dim; d++) field[d] /= k
+      for (let e = 0; e < evals.length; e++) {
+        const ev = this.posOf(evals[e]); if (!ev) continue
+        const shifted = new Float32Array(this.dim)
+        for (let d = 0; d < this.dim; d++) shifted[d] = ev[d] * 0.8 + field[d] * 0.2
+        for (let c = 0; c < cands.length; c++) {
+          const cv = this.posOf(cands[c]); if (!cv) continue
+          let d0 = 0; for (let d = 0; d < this.dim; d++) d0 += shifted[d] * cv[d]
+          sc[c][e] = d0
+        }
+      }
+    }
+    // vote
+    const votes = new Array(cands.length).fill(0)
+    for (let e = 0; e < evals.length; e++) {
+      let bi = 0, bs = -Infinity
+      for (let c = 0; c < cands.length; c++) if (sc[c][e] > bs) { bs = sc[c][e]; bi = c }
+      votes[bi]++
+    }
+    let win = 0, wv = -1, wt = -Infinity
+    for (let c = 0; c < cands.length; c++) {
+      const tot = sc[c].reduce((a, b) => a + b, 0)
+      if (votes[c] > wv || (votes[c] === wv && tot > wt)) { wv = votes[c]; wt = tot; win = c }
+    }
+    return cands[win]
+  }
+  // evaluators = content words near the top of the field (champion-biased) + some periphery
+  // for multi-perspective, excluding the candidates themselves.
+  _pickEvaluators(n, exclude, scores) {
+    const ex = new Set(exclude)
+    const pool = [...scores.keys()].filter((w) => !ex.has(w) && !FUNCTION_WORDS.has(w))
+    if (pool.length <= n) return pool
+    pool.sort((a, b) => scores.get(b) - scores.get(a))
+    const nTop = Math.ceil(n * 0.6)
+    const top = pool.slice(0, nTop)
+    const rest = pool.slice(nTop)
+    const peri = []
+    for (let i = 0; i < n - nTop && rest.length; i++) peri.push(rest[Math.floor(i * rest.length / (n - nTop))])
+    return [...top, ...peri]
+  }
+  // an evaluator's judgement of a candidate: proximity from its position + thread memory
+  _evaluatorScore(ev, cand) {
+    const prox = this.cos(ev, cand)
+    const thread = (this.Tassoc.get(key(ev, cand)) || 0) + (this.Tassoc.get(key(cand, ev)) || 0)
+    return prox + 0.1 * Math.min(thread, 3)
   }
 
   // Thread-weighted centroid over T_assoc — the identity query vector for search/drift.

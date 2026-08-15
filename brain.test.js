@@ -312,4 +312,15 @@ function randVecSpace(nWords, dim, seed) {
   ok('but the idle eye keeps its own identity (threads intact)', brain.eye('quiet').Tassoc.size > 0)
 }
 
+// ── Gate 18: the Unity Chant tiered tournament crowns a champion (cells/evaluators/tiers) ──
+{
+  const g = mockProvider(randVecSpace(30, 8, 11))
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 20; i++) eye.Tassoc.set(wname(i) + ' ' + wname((i + 1) % 20), 1 + (i % 3))
+  const c1 = eye.tournamentChampion()
+  const c2 = eye.tournamentChampion()
+  ok('tiered tournament crowns a champion over a real graph', typeof c1 === 'string' && c1.length > 0)
+  ok('tournament is deterministic (same graph → same champion)', c1 === c2)
+}
+
 console.log(`\n  ${passed} gates passed.`)
