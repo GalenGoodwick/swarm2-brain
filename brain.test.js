@@ -36,9 +36,9 @@ function randVecSpace(nWords, dim, seed) {
 // ── Gate 1: tokenizer drops function words + short words, keeps order ──────────
 {
   const t = tokenizeContent('The waves teach me about the boat and it.')
-  // 'about' is a function word here; 'me'/'it' are <=2 chars → all dropped
-  ok('tokenize keeps content words in order', JSON.stringify(t) === JSON.stringify(['waves', 'teach', 'boat']))
-  ok('tokenize drops function/short words', !t.includes('the') && !t.includes('me') && !t.includes('about'))
+  // function words are now KEPT — they carry the grammar and are part of the threads
+  ok('tokenize keeps ALL letter tokens incl. function words', JSON.stringify(t) === JSON.stringify(['the', 'waves', 'teach', 'me', 'about', 'the', 'boat', 'and', 'it']))
+  ok('tokenize keeps function words (the/and/about)', t.includes('the') && t.includes('and') && t.includes('about'))
 }
 
 // ── Gate 2: thread laying — T_seq consecutive, T_assoc windowed 1/(j-i) ────────

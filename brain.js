@@ -48,8 +48,10 @@ const key = (a, b) => a + ' ' + b
 const unkey = (k) => k.split(' ')
 
 export function tokenizeContent(text) {
-  return (text.toLowerCase().match(/[a-z']+/g) || [])
-    .filter((w) => w.length > 2 && !FUNCTION_WORDS.has(w))
+  // Function words are KEPT — they are part of the threads (they carry the grammar, so the
+  // voice speaks real English). Only stray non-letter tokens are dropped. FUNCTION_WORDS is
+  // still used to define the basin so function-word hubs can't WIN the champion tournament.
+  return (text.toLowerCase().match(/[a-z']+/g) || []).filter((w) => /[a-z]/.test(w))
 }
 
 // The BASIN direction — the generic-hub attractor (steer.py's function-word basin).
@@ -230,6 +232,7 @@ export class Eye {
   tournamentChampion() {
     let best = null, bestS = -Infinity
     for (const [w, s] of this.tournamentScores()) {
+      if (FUNCTION_WORDS.has(w)) continue   // function words thread + speak, but can't be crowned
       if (s > bestS) { bestS = s; best = w }
     }
     return best
@@ -541,7 +544,7 @@ export class Brain {
       for (const [word, s] of eye.tournamentScores()) score.set(word, (score.get(word) || 0) + s * w)
     }
     let best = null, bestS = -Infinity
-    for (const [w, s] of score) if (s > bestS) { bestS = s; best = w }
+    for (const [w, s] of score) { if (FUNCTION_WORDS.has(w)) continue; if (s > bestS) { bestS = s; best = w } }
     return best
   }
 }
