@@ -33,6 +33,33 @@ export function loadPackedGlove(binPath, vocabPath) {
       const i = idx.get(w)
       return i === undefined ? null : floats.subarray(i * dim, i * dim + dim)
     },
+    // FIXED 2D projection axes (PCA over the top-n frequent words), computed ONCE. Gives
+    // stable map coordinates so nodes don't jump between frames — new threads land at
+    // consistent spots and a word's drift shows as real motion along these axes.
+    fixedAxes: (n = 1500) => {
+      n = Math.min(n, words.length)
+      const mean = new Float64Array(dim)
+      for (let i = 0; i < n; i++) { const o = i * dim; for (let j = 0; j < dim; j++) mean[j] += floats[o + j] }
+      for (let j = 0; j < dim; j++) mean[j] /= n
+      const pc = (ex) => {
+        const v = new Float64Array(dim)
+        for (let j = 0; j < dim; j++) v[j] = Math.sin(j * 1.7 + 1)
+        for (let it = 0; it < 50; it++) {
+          const nv = new Float64Array(dim)
+          for (let i = 0; i < n; i++) { const o = i * dim; let d = 0; for (let j = 0; j < dim; j++) d += (floats[o + j] - mean[j]) * v[j]; for (let j = 0; j < dim; j++) nv[j] += d * (floats[o + j] - mean[j]) }
+          if (ex) { let d = 0; for (let j = 0; j < dim; j++) d += nv[j] * ex[j]; for (let j = 0; j < dim; j++) nv[j] -= d * ex[j] }
+          let m = 0; for (let j = 0; j < dim; j++) m += nv[j] * nv[j]; m = Math.sqrt(m) || 1
+          for (let j = 0; j < dim; j++) v[j] = nv[j] / m
+        }
+        return v
+      }
+      const pc1 = pc(null), pc2 = pc(pc1)
+      let scale = 1e-6
+      for (let i = 0; i < n; i++) { const o = i * dim; let x = 0, y = 0; for (let j = 0; j < dim; j++) { x += (floats[o + j] - mean[j]) * pc1[j]; y += (floats[o + j] - mean[j]) * pc2[j] } scale = Math.max(scale, Math.abs(x), Math.abs(y)) }
+      return {
+        project: (vec) => { let x = 0, y = 0; for (let j = 0; j < dim; j++) { x += (vec[j] - mean[j]) * pc1[j]; y += (vec[j] - mean[j]) * pc2[j] } return [Math.max(-1, Math.min(1, x / scale)), Math.max(-1, Math.min(1, y / scale))] },
+      }
+    },
     // nearest vocab words to a UNIT query vector (cosine == dot; brute force, ~ms)
     nearest: (q, k = 8) => {
       const scored = []

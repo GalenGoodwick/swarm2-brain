@@ -301,4 +301,15 @@ function randVecSpace(nWords, dim, seed) {
   ok('drift grows as the word untethers', eye.drift('word') > 0.02)
 }
 
+// ── Gate 17: swarm champion is INPUT-recency weighted (idle eyes fade from live state) ──
+{
+  const g = mockProvider(randVecSpace(24, 6, 5))
+  const brain = new Brain(g)
+  brain.speak('quiet', [1, 2, 3, 4, 5].map(wname).join(' '))            // speaks once, goes idle
+  for (let i = 0; i < 300; i++) brain.speak('loud', [6, 7, 8, 9, 10].map(wname).join(' '))
+  ok('idle eye fades from the live swarm (weight < 0.02)', brain.swarmWeight(brain.eye('quiet')) < 0.02)
+  ok('recently-active eye stays full weight', brain.swarmWeight(brain.eye('loud')) > 0.9)
+  ok('but the idle eye keeps its own identity (threads intact)', brain.eye('quiet').Tassoc.size > 0)
+}
+
 console.log(`\n  ${passed} gates passed.`)

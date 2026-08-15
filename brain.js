@@ -20,6 +20,7 @@ export const DECAY = 0.98
 export const STATE_WINDOW = 5000 // max hot threads PER typed set (identity + voice)
 export const WINDOW = 2          // T_assoc reach (T_seq is always 1)
 export const EVAL_CAP = 48       // bounded evaluator sample for the reverse walk (perf)
+export const SWARM_DECAY = 0.985 // per swarm-input recency decay of an eye's swarm weight
 export const MIN_CONTEXT = 3     // OOV needs >= this many known words to mint
 export const WALK_LEN = 12
 // HEBBIAN + JIGGLE SPRING (the fuller loop). Threads reshape the geometry the
@@ -518,17 +519,26 @@ export class Brain {
   constructor(glove) {
     this.glove = glove
     this.eyes = new Map()
+    this.clock = 0            // total swarm inputs — the INPUT clock (not wall-clock)
   }
   eye(id) {
     if (!this.eyes.has(id)) this.eyes.set(id, new Eye(id, this.glove))
     return this.eyes.get(id)
   }
-  speak(id, text) { return this.eye(id).absorb(text) }
-  // Swarm champion: tournament over the UNION of all eyes' T_assoc (rung 4 will refine).
+  // record a swarm input: advance the input clock and stamp the eye as freshly active
+  touch(id) { this.clock++; const e = this.eyes.get(id); if (e) e.lastActive = this.clock }
+  speak(id, text) { const r = this.eye(id).absorb(text); this.touch(id); return r }
+  // how much an eye counts toward the LIVE swarm state — decays by how many swarm inputs
+  // ago it last spoke (input-based, not time). Idle eyes fade from the collective view but
+  // keep their own identity intact.
+  swarmWeight(eye) { return Math.pow(SWARM_DECAY, this.clock - (eye.lastActive || 0)) }
+  // Swarm champion: recency-weighted tournament over the union — represents the LIVE state.
   swarmChampion() {
     const score = new Map()
     for (const eye of this.eyes.values()) {
-      for (const [w, s] of eye.tournamentScores()) score.set(w, (score.get(w) || 0) + s)
+      const w = this.swarmWeight(eye)
+      if (w < 0.02) continue                       // idle eyes drop out of the live picture
+      for (const [word, s] of eye.tournamentScores()) score.set(word, (score.get(word) || 0) + s * w)
     }
     let best = null, bestS = -Infinity
     for (const [w, s] of score) if (s > bestS) { bestS = s; best = w }

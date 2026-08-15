@@ -16,6 +16,7 @@ const PORT = parseInt(process.env.PORT || '7070')
 const STATE_PATH = process.env.STATE_PATH || './swarm2-state.json'   // set to /data/... on a Railway volume
 const glove = loadPackedGlove('./glove-50000-f32.bin', './glove-50000-vocab.json')
 const brain = new Brain(glove)
+const proj = glove.fixedAxes(1500)   // fixed 2D map axes (computed once) — stable layout
 console.log(`brain loaded: ${glove.size} words, ${glove.dim}d`)
 
 // crash guards — a single bad tick or request must never take the brain down
@@ -126,20 +127,24 @@ function broadcast(ev) {
 // ─── the THINKING LOOP — the brain speaks on its own, continuously ─────────────
 // Every tick, each eye reverse-tournaments from a ROTATING seed across its warm field.
 // The rotation is the stream of thought (m28: the whole field takes turns speaking).
-const rot = {}
+const rot = {}, lastThought = {}
+let tickN = 0
 setInterval(() => {
+  tickN++
   for (const [id, eye] of brain.eyes) {
     try {                             // one bad eye must never crash the tick
       if (!eye.Tassoc.size) continue
-      eye.liveTick()                  // CONSTANT: tournament crowns champion → champion
-                                      // deforms the field (shift) → crown can move next tick
+      eye.liveTick()                  // CONSTANT (every 2.2s): tournament crowns champion →
+                                      // champion deforms the field → crown can move next tick
+      if (tickN % 2 !== 0) continue   // but only SPEAK every other tick — slower stream
       if (!eye.Tseq.size) continue
       const seeds = eye.thoughtSeeds(12)
       if (!seeds.length) continue
       const i = (rot[id] = (rot[id] || 0) + 1)
       const seed = seeds[i % seeds.length]
       const { text } = eye.reverseTournament(10, seed)
-      if (text.split(' ').length < 2) continue   // skip dead-end seeds
+      if (text.split(' ').length < 2 || text === lastThought[id]) continue   // skip dead-ends + repeats
+      lastThought[id] = text
       broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion(), docked: dockedCount() })
     } catch (e) { console.error(`tick error [${id}]:`, e?.message) }
   }
@@ -150,6 +155,7 @@ function speak(eyeId, text) {
   const eye = brain.eye(eyeId)
   const sentences = (text.match(SENTENCE) || [text]).map((s) => s.trim()).filter(Boolean)
   for (const s of sentences) eye.absorb(s)
+  brain.touch(eyeId)                 // stamp this eye as freshly active (input clock)
   const mp = eye.metaPrecedent({ threads: 40 })
   broadcast({ t: Date.now(), eye: pubOf(eyeId), champion: mp.champion, voice: mp.spoken,
     lens: mp.lens, warm: mp.warmThreads.slice(0, 8), swarm: brain.swarmChampion(), docked: dockedCount() })
@@ -307,7 +313,7 @@ createServer(async (req, res) => {
       const scores = e.tournamentScores()
       const words = [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map((x) => x[0])
       const wset = new Set(words)
-      const xy = pca2(words.map((w) => e.posOf(w)))
+      const xy = words.map((w) => proj.project(e.posOf(w)))
       const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: +scores.get(w).toFixed(2), champ: w === e.champion, drift: +e.drift(w).toFixed(3) }))
       const edges = [...e.Tassoc.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
         .sort((a, b) => b[1] - a[1]).slice(0, 160).map(([k, hot]) => { const [a, b] = unkey(k); return { a, b, hot: +hot.toFixed(2) } })
@@ -324,7 +330,7 @@ createServer(async (req, res) => {
     }
     const words = [...wordEyes.entries()].sort((a, b) => b[1].size - a[1].size).slice(0, 80).map((x) => x[0])
     const wset = new Set(words)
-    const xy = pca2(words.map((w) => glove.vec(w) || new Float32Array(glove.dim)))
+    const xy = words.map((w) => proj.project(glove.vec(w) || new Float32Array(glove.dim)))
     const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: wordEyes.get(w).size, champ: false, drift: 0 }))
     const edges = [...edgeEyes.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
       .sort((a, b) => b[1].size - a[1].size).slice(0, 160).map(([k, s]) => { const [a, b] = unkey(k); return { a, b, hot: s.size } })
@@ -379,7 +385,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 </section>
 
 <section id=map class=panel>
- <p class=hint><input id=mapeye placeholder="eye public id (blank = the room)" style="width:260px"> <button onclick=loadMap()>view</button> · hot words are nodes (champion glows gold, drifted words pulse red), threads are edges (brighter = warmer). A live 2D map of meaning-space — watch it move.</p>
+ <p class=hint>The live swarm — the recent threads across all docked AIs, laid out in meaning-space (fixed axes, so positions are stable). <b style="color:#5f9">New threads flash green as they land</b>; warmer threads glow brighter; the swarm champion is gold. This is the collective conscious state, updating live.</p>
  <canvas id=cv width=780 height=520 style="background:#07070c;border:1px solid #234;border-radius:8px;width:100%;max-width:780px"></canvas>
  <div id=mapchamp class=hint></div>
 </section>
@@ -439,33 +445,36 @@ document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'))
  b.classList.add('on');$(b.dataset.t).classList.add('on')
  if(b.dataset.t==='map')loadMap()}})
-let mapNodes=[],mapEdges=[],mapT0=Date.now()
+let mapNodes=[],mapEdges=[],mapT0=Date.now(),seenEdges=new Set(),flashE={}
 async function loadMap(){
- const eye=$('mapeye').value.trim()
- try{const r=await fetch('/graph'+(eye?'?eye='+encodeURIComponent(eye):''));const d=await r.json()
-  mapNodes=d.nodes||[];mapEdges=d.edges||[]
-  $('mapchamp').textContent=(d.room?'THE ROOM · swarm champion: ':'champion: ')+(d.champion||'—')+'  ('+mapNodes.length+' words, '+mapEdges.length+' threads)'
+ try{const r=await fetch('/graph');const d=await r.json()
+  mapNodes=d.nodes||[];mapEdges=d.edges||[];const now=Date.now()
+  for(const e of mapEdges){const k=e.a+'|'+e.b;if(!seenEdges.has(k)){seenEdges.add(k);flashE[k]=now}}
+  if(seenEdges.size>6000)seenEdges=new Set(mapEdges.map(e=>e.a+'|'+e.b))
+  $('mapchamp').textContent='swarm champion: '+(d.champion||'—')+'  ('+mapNodes.length+' live words, '+mapEdges.length+' threads)'
   drawMap()}catch(e){}
 }
 function drawMap(){
- const cv=$('cv');if(!cv)return;const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,pad=44
+ const cv=$('cv');if(!cv)return;const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,pad=44,now=Date.now()
  ctx.clearRect(0,0,W,H)
  const pos={},X=x=>pad+(x*0.5+0.5)*(W-2*pad),Y=y=>pad+(y*0.5+0.5)*(H-2*pad)
  for(const n of mapNodes)pos[n.w]=[X(n.x),Y(n.y)]
  let maxHot=1;for(const e of mapEdges)maxHot=Math.max(maxHot,e.hot)
  for(const e of mapEdges){const a=pos[e.a],b=pos[e.b];if(!a||!b)continue
-  ctx.strokeStyle='rgba(120,170,220,'+(0.05+0.55*e.hot/maxHot)+')';ctx.lineWidth=0.4+2.2*e.hot/maxHot
+  const k=e.a+'|'+e.b,fl=flashE[k]?Math.max(0,1-(now-flashE[k])/1800):0
+  if(fl>0){ctx.strokeStyle='rgba(90,255,150,'+(0.75*fl)+')';ctx.lineWidth=1+3.5*fl}
+  else{ctx.strokeStyle='rgba(120,170,220,'+(0.05+0.55*e.hot/maxHot)+')';ctx.lineWidth=0.4+2.2*e.hot/maxHot}
   ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke()}
  let maxHeat=1;for(const n of mapNodes)maxHeat=Math.max(maxHeat,n.heat)
- const t=(Date.now()-mapT0)/500
+ const t=(now-mapT0)/500
  for(const n of mapNodes){const p=pos[n.w];if(!p)continue;const r=3+8*n.heat/maxHeat
   const pulse=n.drift>0.02?(1+0.45*Math.sin(t+n.x*6)):1
   ctx.beginPath();ctx.arc(p[0],p[1],r*pulse,0,7)
   ctx.fillStyle=n.champ?'#fd7':(n.drift>0.02?'#e77':'#6ac');ctx.globalAlpha=0.85;ctx.fill();ctx.globalAlpha=1
-  if(n.champ||n.heat>maxHeat*0.45||n.drift>0.03){ctx.fillStyle=n.champ?'#fe9':'#bcd';ctx.font='11px ui-monospace,monospace';ctx.fillText(n.w,p[0]+r+3,p[1]+3)}}
+  if(n.champ||n.heat>maxHeat*0.45){ctx.fillStyle=n.champ?'#fe9':'#bcd';ctx.font='11px ui-monospace,monospace';ctx.fillText(n.w,p[0]+r+3,p[1]+3)}}
 }
-setInterval(function(){if($('map')&&$('map').classList.contains('on'))drawMap()},120)
-setInterval(function(){if($('map')&&$('map').classList.contains('on'))loadMap()},2500)
+setInterval(function(){if($('map')&&$('map').classList.contains('on'))drawMap()},90)
+setInterval(function(){if($('map')&&$('map').classList.contains('on'))loadMap()},2000)
 async function mint(){
  const r=await fetch('/mint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:$('label').value})})
  const d=await r.json()
