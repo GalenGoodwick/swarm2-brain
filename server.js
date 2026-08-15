@@ -101,7 +101,7 @@ function snapshot() {
   const eyes = []
   for (const [key, eye] of brain.eyes) {
     if (!eye.Tassoc.size) continue
-    eyes.push({ eye: pubOf(key), champion: eye.champion, lens: eye.decodeCentroid(5) })
+    eyes.push({ eye: pubOf(key), champion: eye.champion, lens: eye.decodeCentroid(10) })
   }
   history.push({ t: Date.now(), swarm: brain.swarmChampion(), eyes })
   if (history.length > HISTORY_MAX) history.shift()
@@ -325,6 +325,29 @@ createServer(async (req, res) => {
       return json(res, { eye: pub, points })
     }
     return json(res, { snapshots: history.length, everySec: 30, history })
+  }
+
+  // IDENTITY OVER TIME — does an eye HOLD its identity across beats (30s heartbeats)?
+  // championStability = fraction of beats at the dominant champion; lensCoherence = mean
+  // beat-to-beat overlap of the identity lens; persistenceVsStart = similarity to beat 0.
+  if (p === '/identity') {
+    const q = url.searchParams.get('eye')
+    const pub = q ? (brain.eyes.has(q) ? pubOf(q) : q) : null
+    if (!pub) return json(res, { error: 'eye required (?eye=<pub|key>)' }, 400)
+    const series = history.map((h) => { const e = h.eyes.find((x) => x.eye === pub); return e ? { champion: e.champion, lens: e.lens || [] } : null }).filter(Boolean)
+    if (series.length < 2) return json(res, { eye: pub, beats: series.length, note: 'need >=2 beats (30s each) to measure' })
+    const cc = {}
+    for (const s of series) cc[s.champion] = (cc[s.champion] || 0) + 1
+    const dom = Object.entries(cc).sort((a, b) => b[1] - a[1])[0]
+    const jac = (a, b) => { const A = new Set(a), B = new Set(b); let i = 0; for (const w of A) if (B.has(w)) i++; return i / ((A.size + B.size - i) || 1) }
+    let coh = 0; for (let k = 1; k < series.length; k++) coh += jac(series[k].lens, series[k - 1].lens); coh /= (series.length - 1)
+    return json(res, {
+      eye: pub, beats: series.length, beatSeconds: 30,
+      dominantChampion: dom[0], championStability: +(dom[1] / series.length).toFixed(2),
+      lensCoherence: +coh.toFixed(2),
+      persistenceVsStart: series.map((s) => +jac(s.lens, series[0].lens).toFixed(2)),
+      champions: series.map((s) => s.champion),
+    })
   }
 
   // DRIFT — the words whose meaning has moved most from their anchor (semantic change now).
