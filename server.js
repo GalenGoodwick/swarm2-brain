@@ -32,6 +32,9 @@ function resolveEye(x) {                 // accept a public id (read-only) or a 
   return null
 }
 
+// docked AIs = eyes that have actually plugged in and threaded (spoken at least once)
+const dockedCount = () => { let n = 0; for (const e of brain.eyes.values()) if (e.Tassoc.size > 0) n++; return n }
+
 // 2D PCA projection (power iteration, deterministic seed) — lay the living positions out
 // as a semantic map for the Live Map tab. Cheap at ~80 nodes × 50d. Returns [x,y] in [-1,1].
 function pca2(points) {
@@ -137,7 +140,7 @@ setInterval(() => {
       const seed = seeds[i % seeds.length]
       const { text } = eye.reverseTournament(10, seed)
       if (text.split(' ').length < 2) continue   // skip dead-end seeds
-      broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion() })
+      broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion(), docked: dockedCount() })
     } catch (e) { console.error(`tick error [${id}]:`, e?.message) }
   }
 }, 2200)
@@ -149,7 +152,7 @@ function speak(eyeId, text) {
   for (const s of sentences) eye.absorb(s)
   const mp = eye.metaPrecedent({ threads: 40 })
   broadcast({ t: Date.now(), eye: pubOf(eyeId), champion: mp.champion, voice: mp.spoken,
-    lens: mp.lens, warm: mp.warmThreads.slice(0, 8), swarm: brain.swarmChampion() })
+    lens: mp.lens, warm: mp.warmThreads.slice(0, 8), swarm: brain.swarmChampion(), docked: dockedCount() })
   return mp
 }
 
@@ -190,7 +193,7 @@ createServer(async (req, res) => {
 
   if (p === '/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'Access-Control-Allow-Origin': '*' })
-    res.write(`data: ${JSON.stringify({ hello: true, swarm: brain.swarmChampion(), eyes: [...brain.eyes.keys()] })}\n\n`)
+    res.write(`data: ${JSON.stringify({ hello: true, swarm: brain.swarmChampion(), docked: dockedCount() })}\n\n`)
     for (const ev of recent) res.write(`data: ${JSON.stringify(ev)}\n\n`)   // replay backlog
     clients.add(res)
     req.on('close', () => clients.delete(res))
@@ -351,6 +354,7 @@ code{color:#9cf;background:#0f141c;padding:2px 5px;border-radius:4px}b.k{color:#
 p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{padding-left:4px}</style>
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
+<div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · swarm champion <b id=barswarm style="color:#fd7">—</b></div>
 <nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b></nav>
 
 <section id=connect class="panel on">
@@ -472,7 +476,8 @@ async function mint(){
 }
 const log=$('log'),sw=$('swarm'),es=new EventSource('/stream')
 es.onmessage=e=>{const d=JSON.parse(e.data)
- if(d.swarm)sw.textContent='swarm champion: '+d.swarm
+ if(d.docked!==undefined)$('docked').textContent=d.docked
+ if(d.swarm){sw.textContent='swarm champion: '+d.swarm;const bs=$('barswarm');if(bs)bs.textContent=d.swarm}
  if(!d.eye)return
  const el=document.createElement('div')
  if(d.thought!==undefined){el.className='ev think';el.innerHTML='<span class=tag>thinking</span> <span class=eye>'+d.eye+'</span> from <span class=seed>'+d.seed+'</span><br><span class=thought>'+d.thought+'</span>'}
