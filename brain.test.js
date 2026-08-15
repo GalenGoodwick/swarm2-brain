@@ -3,7 +3,7 @@
 //
 //   node brain.test.js
 import assert from 'node:assert'
-import { Eye, Brain, DECAY, STATE_WINDOW, WINDOW, tokenizeContent } from './brain.js'
+import { Eye, Brain, DECAY, STATE_WINDOW, WINDOW, tokenizeContent, classifyPOS } from './brain.js'
 import { mockProvider } from './glove.js'
 
 let passed = 0
@@ -334,6 +334,23 @@ function randVecSpace(nWords, dim, seed) {
   ok('speak starts from the seed/champion', s[0] === 'a')
   ok('every generated step is a real T_seq transition (no hops)',
     s.slice(0, -1).every((w, i) => eye.Tseq.has(w + ' ' + s[i + 1])))
+}
+
+// ── Gate 20: trigram context steers generation over the bigram, + POS classifier ──
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0, 1, 0], c: [0, 0, 1], x: [1, 1, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.champion = 'a'
+  eye.Tseq.set('a b', 1); eye.Tseq.set('b c', 1); eye.Tseq.set('b x', 5)   // b alone strongly → x
+  eye.Tseq2.set('a b c', 3)                                                 // but trigram a b → c
+  eye.Tassoc.set('a b', 1); eye.Tassoc.set('b c', 1); eye.Tassoc.set('b x', 1)
+  const s = eye.speak(4).split(' ')
+  ok('trigram context wins over the bigram (a b → c, not x)', s[0] === 'a' && s[1] === 'b' && s[2] === 'c')
+}
+{
+  ok('POS classifier tags det/verb/adv/noun',
+    classifyPOS('the') === 'det' && classifyPOS('running') === 'verb' &&
+    classifyPOS('quickly') === 'adv' && classifyPOS('happiness') === 'noun')
 }
 
 console.log(`\n  ${passed} gates passed.`)

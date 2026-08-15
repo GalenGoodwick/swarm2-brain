@@ -58,6 +58,31 @@ export const FUNCTION_WORDS = new Set([
 const key = (a, b) => a + ' ' + b
 const unkey = (k) => k.split(' ')
 
+// Lightweight POS — a function-word lexicon + suffix heuristics. No tagger, no LLM; the
+// classes are used only to NUDGE the word tournament toward grammatical transitions.
+const POS_DET = new Set(['the', 'a', 'an', 'this', 'that', 'these', 'those', 'some', 'any', 'each', 'every', 'no', 'my', 'your', 'his', 'her', 'its', 'our', 'their'])
+const POS_PREP = new Set(['in', 'on', 'at', 'with', 'of', 'to', 'for', 'from', 'by', 'into', 'onto', 'over', 'under', 'through', 'toward', 'against', 'about', 'across', 'after', 'before', 'between', 'out'])
+const POS_CONJ = new Set(['and', 'or', 'but', 'so', 'yet', 'nor'])
+const POS_PRON = new Set(['i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'them', 'us'])
+const POS_VERB = new Set(['is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'can', 'could', 'should', 'may', 'might', 'must'])
+export function classifyPOS(w) {
+  if (POS_DET.has(w)) return 'det'
+  if (POS_PREP.has(w)) return 'prep'
+  if (POS_CONJ.has(w)) return 'conj'
+  if (POS_PRON.has(w)) return 'pron'
+  if (POS_VERB.has(w)) return 'verb'
+  if (/(ed|ing)$/.test(w)) return 'verb'
+  if (/ly$/.test(w)) return 'adv'
+  if (/(ous|ful|ive|able|ible|al|ic|ish|less)$/.test(w)) return 'adj'
+  return 'noun'
+}
+const POS_OK = new Set([
+  'det noun', 'det adj', 'adj noun', 'adj adj', 'noun verb', 'noun noun', 'noun prep', 'noun conj',
+  'verb det', 'verb noun', 'verb prep', 'verb adv', 'verb adj', 'prep det', 'prep noun', 'prep adj',
+  'conj noun', 'conj det', 'conj verb', 'conj adj', 'pron verb', 'adv verb', 'adv adj', 'noun pron',
+  'verb pron', 'prep pron', 'det det',
+])
+
 export function tokenizeContent(text) {
   // Function words are KEPT — they are part of the threads (they carry the grammar, so the
   // voice speaks real English). Only stray non-letter tokens are dropped. FUNCTION_WORDS is
@@ -91,7 +116,8 @@ export class Eye {
     this.glove = glove
     this.dim = glove.dim
     this.tick = 0
-    this.Tseq = new Map()     // key -> hot   (directed, consecutive)
+    this.Tseq = new Map()     // key -> hot   (directed, consecutive bigram)
+    this.Tseq2 = new Map()    // "a b c" -> hot  (trigram transitions, for tighter grammar)
     this.Tassoc = new Map()   // key -> hot   (directed, windowed)
     this.minted = new Map()   // word -> Float32Array (unit) for OOV
     this.mintedN = new Map()  // word -> how many contexts it has been woven from (for refine)
@@ -180,6 +206,11 @@ export class Eye {
       // T_seq: the single next word — a real grammatical transition.
       const kb = key(a, words[i + 1])
       this.Tseq.set(kb, (this.Tseq.get(kb) || 0) + 1)
+      // T_seq2: the trigram a→b→c — conditions the next word on the last TWO words.
+      if (i < words.length - 2) {
+        const k3 = a + ' ' + words[i + 1] + ' ' + words[i + 2]
+        this.Tseq2.set(k3, (this.Tseq2.get(k3) || 0) + 1)
+      }
       // T_assoc: this word to the next WINDOW words, distance-decayed 1/(j-i).
       for (let j = i + 1; j <= Math.min(i + WINDOW, words.length - 1); j++) {
         if (words[j] === a) continue
@@ -197,7 +228,7 @@ export class Eye {
   // forgetting). The bound is CONSTANT — this is what keeps the consciousness state
   // small enough to be any AI's meta-precedent window. Gated in brain.test.js.
   forget() {
-    for (const m of [this.Tseq, this.Tassoc]) {
+    for (const m of [this.Tseq, this.Tseq2, this.Tassoc]) {
       for (const [k, v] of m) m.set(k, v * DECAY)
       if (m.size > STATE_WINDOW) {
         const keep = [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, STATE_WINDOW)
@@ -445,12 +476,17 @@ export class Eye {
   // gradient of what fits next. One mechanism crowns identity AND generates each word.
   speak(len = WALK_LEN, seed = this.champion) {
     if (!seed) return ''
-    // T_seq adjacency, built once
-    const adj = new Map()
+    // bigram + trigram adjacency, built once
+    const adj = new Map(), adj2 = new Map()
     for (const [k, hot] of this.Tseq) {
       const [a, b] = unkey(k)
       let l = adj.get(a); if (!l) { l = []; adj.set(a, l) }
       l.push([b, hot])
+    }
+    for (const [k, hot] of this.Tseq2) {
+      const p = k.split(' '); const bg = p[0] + ' ' + p[1]
+      let l = adj2.get(bg); if (!l) { l = []; adj2.set(bg, l) }
+      l.push([p[2], hot])
     }
     // evaluator pool (champion-biased content words), built once
     const scores = this.tournamentScores()
@@ -460,9 +496,12 @@ export class Eye {
     const usedContent = new Set(FUNCTION_WORDS.has(seed) ? [] : [seed])
     for (let step = 0; step < len; step++) {
       const prev = out[out.length - 1]
-      const cands = (adj.get(prev) || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
+      // TRIGRAM candidates (conditioned on the last two words) if any, else bigram
+      let cands = out.length >= 2 ? adj2.get(out[out.length - 2] + ' ' + prev) : null
+      if (!cands || !cands.length) cands = adj.get(prev)
+      cands = (cands || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
       if (!cands.length) break                         // boundary: no real continuation
-      const next = this._wordTournament(cands, out.slice(-3), evalPool)
+      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev)
       if (!next) break
       out.push(next)
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
@@ -473,12 +512,13 @@ export class Eye {
   // one word-position tournament: candidates are the real successors; each is graded by
   // its transition strength AND how well the evaluator panel (shifted toward the current
   // context) agrees it fits here. That agreement is the gradient; the champion is the word.
-  _wordTournament(cands, ctx, evalPool) {
+  _wordTournament(cands, ctx, evalPool, prev) {
     if (cands.length === 1) return cands[0][0]
     const cvec = new Float32Array(this.dim); let n = 0
     for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
     if (n) for (let i = 0; i < this.dim; i++) cvec[i] /= n
     const evals = this._pickEvaluators(NUM_EVALUATORS, cands.map((c) => c[0]), evalPool)
+    const pprev = prev ? classifyPOS(prev) : null
     let best = null, bestS = -Infinity
     for (const [c, hot] of cands) {
       const cv = this.posOf(c); if (!cv) continue
@@ -489,7 +529,8 @@ export class Eye {
         agree += d
       }
       const fit = evals.length ? agree / evals.length : 0
-      const s = Math.log(1 + hot) * (fit + 1)          // transition strength × contextual fit
+      const posBonus = pprev && POS_OK.has(pprev + ' ' + classifyPOS(c)) ? 0.4 : 0   // grammatical POS nudge
+      const s = Math.log(1 + hot) * (fit + 1) + posBonus   // transition × contextual fit + grammar
       if (s > bestS) { bestS = s; best = c }
     }
     return best || cands[0][0]
