@@ -121,6 +121,7 @@ export class Eye {
     this.Tassoc = new Map()   // key -> hot   (directed, windowed)
     this.minted = new Map()   // word -> Float32Array (unit) for OOV
     this.mintedN = new Map()  // word -> how many contexts it has been woven from (for refine)
+    this.provenance = new Map() // word -> Set<eyeId> that contributed it (for consensus)
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
@@ -198,9 +199,13 @@ export class Eye {
   }
 
   // Absorb one sentence: mint OOV, lay T_seq (consecutive) + T_assoc (windowed).
-  absorb(text) {
+  absorb(text, eyeId = null) {
     this.tick++
     const words = this._resolve(tokenizeContent(text))
+    if (eyeId) for (const w of words) {          // provenance: who contributed each word
+      let s = this.provenance.get(w); if (!s) { s = new Set(); this.provenance.set(w, s) }
+      s.add(eyeId)
+    }
     for (let i = 0; i < words.length - 1; i++) {
       const a = words[i]
       // T_seq: the single next word — a real grammatical transition.
@@ -242,10 +247,29 @@ export class Eye {
   // Drop living positions for words no longer in the field — bounds memory. A pruned
   // word re-seeds from its pristine GloVe point if it returns.
   prunePositions() {
-    if (this.pos.size < 256) return
+    if (this.pos.size < 256 && this.provenance.size < 4000) return
     const active = new Set(this.activeWords())
     if (this.champion) active.add(this.champion)
     for (const w of this.pos.keys()) if (!active.has(w)) this.pos.delete(w)
+    for (const w of this.provenance.keys()) if (!active.has(w)) this.provenance.delete(w)
+  }
+
+  // CONSENSUS — words carried by >= minEyes DISTINCT contributors (not a sum; a word many
+  // participants share is common, one screamed by a single eye is not).
+  commonWords(minEyes = 2, k = 60) {
+    return [...this.provenance.entries()]
+      .filter(([w, s]) => s.size >= minEyes && !FUNCTION_WORDS.has(w))
+      .map(([w, s]) => ({ word: w, eyes: s.size }))
+      .sort((a, b) => b.eyes - a.eyes).slice(0, k)
+  }
+  // what each contributor UNIQUELY brought (a word only they used)
+  distinctWords(kPer = 15) {
+    const out = {}
+    for (const [w, s] of this.provenance) if (s.size === 1 && !FUNCTION_WORDS.has(w)) {
+      const e = [...s][0]; (out[e] || (out[e] = [])).push(w)
+    }
+    for (const e in out) out[e] = out[e].slice(0, kPer)
+    return out
   }
 
   cos(a, b) {
@@ -704,35 +728,26 @@ export class Eye {
   }
 }
 
+// THE BRAIN is a SINGLE universal substrate — one shared thread graph, one champion (the
+// collective meta precedent). Eyes are not separate minds; they are entry points that write
+// into the one brain, tracked only as provenance (who contributed what) and recency.
 export class Brain {
   constructor(glove) {
     this.glove = glove
-    this.eyes = new Map()
-    this.clock = 0            // total swarm inputs — the INPUT clock (not wall-clock)
+    this.substrate = new Eye('universal', glove)   // the ONE brain
+    this.participants = new Map()                  // eyeId -> { lastActive } (docked/provenance)
+    this.clock = 0
   }
-  eye(id) {
-    if (!this.eyes.has(id)) this.eyes.set(id, new Eye(id, this.glove))
-    return this.eyes.get(id)
+  // an AI speaks INTO the universal brain; its input is tagged with its id for provenance
+  speak(eyeId, text) {
+    this.clock++
+    const p = this.participants.get(eyeId) || {}
+    p.lastActive = this.clock
+    this.participants.set(eyeId, p)
+    return this.substrate.absorb(text, eyeId)
   }
-  // record a swarm input: advance the input clock and stamp the eye as freshly active
-  touch(id) { this.clock++; const e = this.eyes.get(id); if (e) e.lastActive = this.clock }
-  speak(id, text) { const r = this.eye(id).absorb(text); this.touch(id); return r }
-  // how much an eye counts toward the LIVE swarm state — decays by how many swarm inputs
-  // ago it last spoke (input-based, not time). Idle eyes fade from the collective view but
-  // keep their own identity intact.
-  swarmWeight(eye) { return Math.pow(SWARM_DECAY, this.clock - (eye.lastActive || 0)) }
-  // Swarm champion: recency-weighted tournament over the union — represents the LIVE state.
-  swarmChampion() {
-    const score = new Map()
-    for (const eye of this.eyes.values()) {
-      const w = this.swarmWeight(eye)
-      if (w < 0.02) continue                       // idle eyes drop out of the live picture
-      for (const [word, s] of eye.tournamentScores()) score.set(word, (score.get(word) || 0) + s * w)
-    }
-    let best = null, bestS = -Infinity
-    for (const [w, s] of score) { if (FUNCTION_WORDS.has(w)) continue; if (s > bestS) { bestS = s; best = w } }
-    return best
-  }
+  champion() { return this.substrate.champion }
+  docked() { return this.participants.size }       // participants who have spoken
 }
 
 export { key, unkey }

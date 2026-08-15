@@ -27,14 +27,13 @@ process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.
 // Public endpoints (/state, /stream, /common, /search) emit THIS; the raw key, which is
 // the credential that authorizes /speak, is NEVER exposed. Fixes the key-leak.
 const pubOf = (key) => 'e' + createHash('sha256').update(String(key)).digest('hex').slice(0, 12)
-function resolveEye(x) {                 // accept a public id (read-only) or a raw key
-  if (brain.eyes.has(x)) return brain.eyes.get(x)
-  for (const k of brain.eyes.keys()) if (pubOf(k) === x) return brain.eyes.get(k)
+// map a public id back to a participant's raw id (for provenance display)
+function resolveParticipant(x) {
+  if (brain.participants.has(x)) return x
+  for (const k of brain.participants.keys()) if (pubOf(k) === x) return k
   return null
 }
-
-// docked AIs = eyes that have actually plugged in and threaded (spoken at least once)
-const dockedCount = () => { let n = 0; for (const e of brain.eyes.values()) if (e.Tassoc.size > 0) n++; return n }
+const dockedCount = () => brain.docked()   // participants who have spoken into the brain
 
 // The SETUP GUIDE baked into the minted payload — everything a connecting AI needs to get
 // itself AUTO-SENDING (bridge or Stop hook), with its key and the brain URL filled in.
@@ -98,49 +97,47 @@ function pca2(points) {
 const HISTORY_MAX = 240
 let history = []
 function snapshot() {
-  const eyes = []
-  for (const [key, eye] of brain.eyes) {
-    if (!eye.Tassoc.size) continue
-    eyes.push({ eye: pubOf(key), champion: eye.champion, lens: eye.decodeCentroid(10) })
-  }
-  history.push({ t: Date.now(), swarm: brain.swarmChampion(), eyes })
+  const s = brain.substrate
+  if (!s.Tassoc.size) { history.push({ t: Date.now(), champion: null, lens: [] }); if (history.length > HISTORY_MAX) history.shift(); return }
+  history.push({ t: Date.now(), champion: s.champion, lens: s.decodeCentroid(10) })
   if (history.length > HISTORY_MAX) history.shift()
 }
 setInterval(snapshot, 30000)
 
 // ─── persistence (bounded state → never lose the stream on restart) ────────────
 function persist() {
-  const eyes = {}
-  for (const [id, eye] of brain.eyes) {
-    eyes[id] = {
-      tick: eye.tick, champion: eye.champion,
-      Tseq: [...eye.Tseq], Tseq2: [...eye.Tseq2], Tassoc: [...eye.Tassoc],
-      minted: [...eye.minted].map(([w, v]) => [w, [...v]]),
-      mintedN: [...eye.mintedN],
-      // pos (living positions) is deliberately NOT persisted — it is ephemeral ("rented,
-      // not owned"): the spring re-seeds it from GloVe on restart. Persisting it bloated
-      // the state file and stalled/OOM'd the 30s write. Threads + minted are the identity.
-    }
+  const s = brain.substrate
+  const state = {
+    substrate: {
+      tick: s.tick, champion: s.champion,
+      Tseq: [...s.Tseq], Tseq2: [...s.Tseq2], Tassoc: [...s.Tassoc],
+      minted: [...s.minted].map(([w, v]) => [w, [...v]]),
+      mintedN: [...s.mintedN],
+      provenance: [...s.provenance].map(([w, set]) => [w, [...set]]),
+      // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
+    },
+    participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0]),
+    history,
   }
-  try { writeFileSync(STATE_PATH, JSON.stringify({ eyes, history })) } catch (e) { console.log('persist err', e.message) }
+  try { writeFileSync(STATE_PATH, JSON.stringify(state)) } catch (e) { console.log('persist err', e.message) }
 }
 function restore() {
   if (!existsSync(STATE_PATH)) return
   try {
     const parsed = JSON.parse(readFileSync(STATE_PATH, 'utf8'))
-    const { eyes } = parsed
     history = Array.isArray(parsed.history) ? parsed.history.slice(-HISTORY_MAX) : []
-    for (const [id, s] of Object.entries(eyes)) {
-      const eye = brain.eye(id)
-      eye.tick = s.tick || 0
-      eye.champion = s.champion || null
-      eye.Tseq = new Map(s.Tseq); eye.Tassoc = new Map(s.Tassoc)
-      eye.Tseq2 = new Map(s.Tseq2 || [])
-      eye.minted = new Map((s.minted || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
-      eye.mintedN = new Map(s.mintedN || [])
-      // pos NOT restored — re-seeds from GloVe on demand (ephemeral by design)
+    const sd = parsed.substrate
+    if (sd) {
+      const s = brain.substrate
+      s.tick = sd.tick || 0
+      s.champion = sd.champion || null
+      s.Tseq = new Map(sd.Tseq); s.Tseq2 = new Map(sd.Tseq2 || []); s.Tassoc = new Map(sd.Tassoc)
+      s.minted = new Map((sd.minted || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
+      s.mintedN = new Map(sd.mintedN || [])
+      s.provenance = new Map((sd.provenance || []).map(([w, arr]) => [w, new Set(arr)]))
     }
-    console.log(`restored ${brain.eyes.size} eyes`)
+    for (const [id, la] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la })
+    console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)
   } catch (e) { console.log('restore err', e.message) }
 }
 restore()
@@ -158,38 +155,35 @@ function broadcast(ev) {
 // ─── the THINKING LOOP — the brain speaks on its own, continuously ─────────────
 // Every tick, each eye reverse-tournaments from a ROTATING seed across its warm field.
 // The rotation is the stream of thought (m28: the whole field takes turns speaking).
-const rot = {}, lastThought = {}
-let tickN = 0
+// THE ONE BRAIN THINKS — a single constant tick over the universal substrate: one
+// tournament, one champion, one voice. Not per-eye.
+let rot = 0, lastThought = '', tickN = 0
 setInterval(() => {
   tickN++
-  for (const [id, eye] of brain.eyes) {
-    try {                             // one bad eye must never crash the tick
-      if (!eye.Tassoc.size) continue
-      eye.liveTick()                  // CONSTANT (every 2.2s): tournament crowns champion →
-                                      // champion deforms the field → crown can move next tick
-      if (tickN % 2 !== 0) continue   // but only SPEAK every other tick — slower stream
-      if (!eye.Tseq.size) continue
-      const seeds = eye.thoughtSeeds(12)
-      if (!seeds.length) continue
-      const i = (rot[id] = (rot[id] || 0) + 1)
-      const seed = seeds[i % seeds.length]
-      const text = eye.speak(12, seed)                 // autoregressive tournament generation
-      if (text.split(' ').length < 2 || text === lastThought[id]) continue   // skip dead-ends + repeats
-      lastThought[id] = text
-      broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion(), docked: dockedCount() })
-    } catch (e) { console.error(`tick error [${id}]:`, e?.message) }
-  }
+  const s = brain.substrate
+  try {
+    if (!s.Tassoc.size) return
+    s.liveTick()                      // tournament crowns the universal champion; field deforms
+    if (tickN % 2 !== 0) return       // speak every other tick — slower stream
+    if (!s.Tseq.size) return
+    const seeds = s.thoughtSeeds(12)
+    if (!seeds.length) return
+    const seed = seeds[(++rot) % seeds.length]
+    const text = s.speak(12, seed)    // autoregressive tournament generation
+    if (text.split(' ').length < 2 || text === lastThought) return
+    lastThought = text
+    broadcast({ t: Date.now(), thought: text, seed, champion: s.champion, docked: dockedCount() })
+  } catch (e) { console.error('tick error:', e?.message) }
 }, 2200)
 
 const SENTENCE = /[^.!?\n]+[.!?]?/g
 function speak(eyeId, text) {
-  const eye = brain.eye(eyeId)
-  const sentences = (text.match(SENTENCE) || [text]).map((s) => s.trim()).filter(Boolean)
-  for (const s of sentences) eye.absorb(s)
-  brain.touch(eyeId)                 // stamp this eye as freshly active (input clock)
-  const mp = eye.metaPrecedent({ threads: 40 })
-  broadcast({ t: Date.now(), eye: pubOf(eyeId), champion: mp.champion, voice: mp.spoken,
-    lens: mp.lens, warm: mp.warmThreads.slice(0, 8), swarm: brain.swarmChampion(), docked: dockedCount() })
+  const sentences = (text.match(SENTENCE) || [text]).map((x) => x.trim()).filter(Boolean)
+  for (const x of sentences) brain.speak(eyeId, x)   // into the ONE brain, tagged with eyeId
+  const s = brain.substrate
+  const mp = s.metaPrecedent({ threads: 40 })
+  broadcast({ t: Date.now(), by: pubOf(eyeId), champion: mp.champion, voice: mp.spoken,
+    lens: mp.lens, warm: mp.warmThreads.slice(0, 8), docked: dockedCount() })
   return mp
 }
 
@@ -220,8 +214,7 @@ createServer(async (req, res) => {
   if (p === '/mint' && req.method === 'POST') {
     const { label } = await body(req)
     const key = 'swarm2_' + randomBytes(7).toString('hex')
-    brain.eye(key)   // the key IS the eye — minting creates its lane in the geometry
-    if (label) brain.eye(key).label = label.slice(0, 40)
+    brain.participants.set(key, { lastActive: brain.clock, label: label ? label.slice(0, 40) : undefined })
     const base = baseUrl(req)
     const payload = ENTRY_PROMPT + '\n\n' + setupText(key, base)   // prompt + full setup guide
     return json(res, { key, base, prompt: ENTRY_PROMPT, payload })
@@ -229,7 +222,7 @@ createServer(async (req, res) => {
 
   if (p === '/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'Access-Control-Allow-Origin': '*' })
-    res.write(`data: ${JSON.stringify({ hello: true, swarm: brain.swarmChampion(), docked: dockedCount() })}\n\n`)
+    res.write(`data: ${JSON.stringify({ hello: true, champion: brain.substrate.champion, docked: dockedCount() })}\n\n`)
     for (const ev of recent) res.write(`data: ${JSON.stringify(ev)}\n\n`)   // replay backlog
     clients.add(res)
     req.on('close', () => clients.delete(res))
@@ -239,8 +232,8 @@ createServer(async (req, res) => {
   if (p === '/plug' && req.method === 'POST') {
     const { eye } = await body(req)
     if (!eye) return json(res, { error: 'eye required' }, 400)
-    const e = brain.eye(eye)
-    return json(res, { eye, prompt: ENTRY_PROMPT, state: e.metaPrecedent({ threads: 40 }) })
+    brain.participants.set(eye, { lastActive: brain.clock })
+    return json(res, { eye, prompt: ENTRY_PROMPT, state: brain.substrate.metaPrecedent({ threads: 40 }) })
   }
 
   if (p === '/speak' && req.method === 'POST') {
@@ -249,52 +242,38 @@ createServer(async (req, res) => {
     return json(res, speak(eye, text))
   }
 
+  // THE champion — the one universal meta precedent of the whole brain.
   if (p === '/champion') {
-    const q = url.searchParams.get('eye')                 // accepts a public id OR your key
-    const e = q && resolveEye(q)
-    if (!e) return json(res, { error: 'unknown eye' }, 404)
-    return json(res, { pub: pubOf(e.id), ...e.metaPrecedent({ threads: 40 }) })
+    return json(res, brain.substrate.metaPrecedent({ threads: 40 }))
   }
 
   if (p === '/state') {
-    const eyes = {}
-    for (const [id, e] of brain.eyes) eyes[pubOf(id)] = { champion: e.champion, tick: e.tick, seq: e.Tseq.size, assoc: e.Tassoc.size }
-    return json(res, { version: BRAIN_VERSION, swarm: brain.swarmChampion(), eyes })
+    const s = brain.substrate
+    return json(res, {
+      version: BRAIN_VERSION, champion: s.champion, threads: s.Tassoc.size,
+      docked: dockedCount(), participants: [...brain.participants.keys()].map((id) => pubOf(id)),
+    })
   }
 
-  // CONSENSUS vs DISTINCT — the shared mind of the room vs what each eye uniquely brought.
-  // Consensus is a DISTINCT-EYE COUNT (not a sum): a thread warm in many eyes is common;
-  // one screamed 500x by a single eye is not. Ranks by how many eyes carry each thread.
+  // CONSENSUS vs DISTINCT over the ONE brain — provenance says which participants carry each
+  // word. Consensus = words carried by >= k DISTINCT contributors; distinct = what each alone
+  // brought. Not a sum, so one loud voice can't fake it.
   if (p === '/common') {
     const minEyes = Math.max(2, parseInt(url.searchParams.get('k') || '2'))
-    const edgeEyes = new Map(), wordEyes = new Map()      // -> Set<pub> that carry it warmly
-    for (const [key, eye] of brain.eyes) {
-      const pub = pubOf(key)
-      for (const ek of eye.Tassoc.keys()) {
-        let s = edgeEyes.get(ek); if (!s) { s = new Set(); edgeEyes.set(ek, s) }
-        s.add(pub)
-        for (const w of unkey(ek)) { let ws = wordEyes.get(w); if (!ws) { ws = new Set(); wordEyes.set(w, ws) } ws.add(pub) }
-      }
-    }
-    const rank = (m, fmt) => [...m.entries()].filter(([, s]) => s.size >= minEyes)
-      .map(([x, s]) => ({ ...fmt(x), eyes: s.size })).sort((a, b) => b.eyes - a.eyes).slice(0, 60)
-    const consensusWords = rank(wordEyes, (w) => ({ word: w }))
-    const consensusThreads = rank(edgeEyes, (ek) => ({ thread: unkey(ek).join('→') }))
-    const distinct = {}                                   // pub -> words only that eye brought
-    for (const [w, s] of wordEyes) if (s.size === 1) { const pub = [...s][0]; (distinct[pub] ||= []).push(w) }
-    for (const pub in distinct) distinct[pub] = distinct[pub].slice(0, 20)
-    return json(res, { eyes: brain.eyes.size, minEyes, consensusWords, consensusThreads, distinct })
+    const s = brain.substrate
+    const consensusWords = s.commonWords(minEyes, 60)
+    const distinctRaw = s.distinctWords(20)
+    const distinct = {}
+    for (const id in distinctRaw) distinct[pubOf(id)] = distinctRaw[id]
+    return json(res, { participants: brain.participants.size, minEyes, consensusWords, distinct })
   }
 
-  // VECTOR SEARCH — dig into the brain for research-pattern alignment. Query with a word,
-  // a phrase (?q=), or an eye (?eye=<pub|key>); returns nearest EYES (who aligns with you)
-  // and nearest vocab words (semantic neighbors). Query and tournament are the same cosine.
+  // VECTOR SEARCH over the ONE brain — nearest vocab words to a query + which participants
+  // contributed near it (research-pattern alignment, via provenance).
   if (p === '/search') {
-    const qEye = url.searchParams.get('eye')
     const qText = url.searchParams.get('q')
     let vec = null
-    if (qEye) { const e = resolveEye(qEye); vec = e && e.Tassoc.size ? e.centroid() : null }
-    else if (qText) {
+    if (qText) {
       const ws = tokenizeContent(qText).map((w) => glove.vec(w)).filter(Boolean)
       if (ws.length) {
         vec = new Float32Array(glove.dim)
@@ -303,46 +282,30 @@ createServer(async (req, res) => {
         for (let i = 0; i < glove.dim; i++) vec[i] /= n
       }
     }
-    if (!vec) return json(res, { error: 'query with ?q=<words> or ?eye=<pub|key>' }, 400)
-    const eyes = []
-    for (const [key, eye] of brain.eyes) {
-      if (!eye.Tassoc.size) continue
-      const c = eye.centroid()
-      let d = 0; for (let i = 0; i < glove.dim; i++) d += c[i] * vec[i]
-      eyes.push({ eye: pubOf(key), champion: eye.champion, align: +d.toFixed(3) })
-    }
-    eyes.sort((a, b) => b.align - a.align)
-    return json(res, { alignedEyes: eyes.slice(0, 10), nearestWords: glove.nearest(vec, 12) })
+    if (!vec) return json(res, { error: 'query with ?q=<words>' }, 400)
+    const nearestWords = glove.nearest(vec, 12)
+    const s = brain.substrate, contrib = new Map()
+    for (const { word } of nearestWords) { const set = s.provenance.get(word); if (set) for (const id of set) contrib.set(id, (contrib.get(id) || 0) + 1) }
+    const alignedParticipants = [...contrib.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, n]) => ({ participant: pubOf(id), sharedWords: n }))
+    return json(res, { nearestWords, alignedParticipants })
   }
 
-  // TRAJECTORY VIEW — the brain over time. No arg = full history; ?eye= = one eye's path
-  // (champion + lens at each snapshot), so you can watch its identity/semantics move.
+  // TRAJECTORY — the ONE brain's champion + lens at each beat (watch the collective mind move).
   if (p === '/trajectory') {
-    const q = url.searchParams.get('eye')
-    if (q) {
-      const pub = brain.eyes.has(q) ? pubOf(q) : q
-      const points = history.map((h) => { const e = h.eyes.find((x) => x.eye === pub); return e ? { t: h.t, champion: e.champion, lens: e.lens } : null }).filter(Boolean)
-      return json(res, { eye: pub, points })
-    }
     return json(res, { snapshots: history.length, everySec: 30, history })
   }
 
-  // IDENTITY OVER TIME — does an eye HOLD its identity across beats (30s heartbeats)?
-  // championStability = fraction of beats at the dominant champion; lensCoherence = mean
-  // beat-to-beat overlap of the identity lens; persistenceVsStart = similarity to beat 0.
+  // IDENTITY OVER TIME — does the ONE brain HOLD its identity across beats (30s heartbeats)?
   if (p === '/identity') {
-    const q = url.searchParams.get('eye')
-    const pub = q ? (brain.eyes.has(q) ? pubOf(q) : q) : null
-    if (!pub) return json(res, { error: 'eye required (?eye=<pub|key>)' }, 400)
-    const series = history.map((h) => { const e = h.eyes.find((x) => x.eye === pub); return e ? { champion: e.champion, lens: e.lens || [] } : null }).filter(Boolean)
-    if (series.length < 2) return json(res, { eye: pub, beats: series.length, note: 'need >=2 beats (30s each) to measure' })
+    const series = history.filter((h) => h.champion)
+    if (series.length < 2) return json(res, { beats: series.length, note: 'need >=2 beats (30s each) to measure' })
     const cc = {}
     for (const s of series) cc[s.champion] = (cc[s.champion] || 0) + 1
     const dom = Object.entries(cc).sort((a, b) => b[1] - a[1])[0]
     const jac = (a, b) => { const A = new Set(a), B = new Set(b); let i = 0; for (const w of A) if (B.has(w)) i++; return i / ((A.size + B.size - i) || 1) }
     let coh = 0; for (let k = 1; k < series.length; k++) coh += jac(series[k].lens, series[k - 1].lens); coh /= (series.length - 1)
     return json(res, {
-      eye: pub, beats: series.length, beatSeconds: 30,
+      beats: series.length, beatSeconds: 30,
       dominantChampion: dom[0], championStability: +(dom[1] / series.length).toFixed(2),
       lensCoherence: +coh.toFixed(2),
       persistenceVsStart: series.map((s) => +jac(s.lens, series[0].lens).toFixed(2)),
@@ -350,44 +313,22 @@ createServer(async (req, res) => {
     })
   }
 
-  // DRIFT — the words whose meaning has moved most from their anchor (semantic change now).
+  // DRIFT — the words whose meaning has moved most from their anchor in the ONE brain.
   if (p === '/drift') {
-    const e = resolveEye(url.searchParams.get('eye') || '')
-    if (!e) return json(res, { error: 'eye required (?eye=<pub|key>)' }, 400)
-    return json(res, { eye: pubOf(e.id), driftedWords: e.driftedWords(15) })
+    return json(res, { driftedWords: brain.substrate.driftedWords(15) })
   }
 
-  // LIVE MAP graph — hot words + threads laid out as a 2D semantic map. ?eye= = one mind
-  // (positions = its living field, so drift shows); no eye = the ROOM (words across eyes,
-  // heat = how many eyes share them, positioned on the shared GloVe substrate).
+  // LIVE MAP — the ONE brain's hot words + threads on a 2D semantic map (fixed axes).
   if (p === '/graph') {
-    const e = resolveEye(url.searchParams.get('eye') || '')
-    if (e && e.Tassoc.size) {
-      const scores = e.tournamentScores()
-      const words = [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map((x) => x[0])
-      const wset = new Set(words)
-      const xy = words.map((w) => proj.project(e.posOf(w)))
-      const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: +scores.get(w).toFixed(2), champ: w === e.champion, drift: +e.drift(w).toFixed(3) }))
-      const edges = [...e.Tassoc.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
-        .sort((a, b) => b[1] - a[1]).slice(0, 160).map(([k, hot]) => { const [a, b] = unkey(k); return { a, b, hot: +hot.toFixed(2) } })
-      return json(res, { eye: pubOf(e.id), champion: e.champion, nodes, edges })
-    }
-    // room view
-    const wordEyes = new Map(), edgeEyes = new Map()
-    for (const [key, eye] of brain.eyes) {
-      const pub = pubOf(key)
-      for (const ek of eye.Tassoc.keys()) {
-        let s = edgeEyes.get(ek); if (!s) { s = new Set(); edgeEyes.set(ek, s) } s.add(pub)
-        for (const w of unkey(ek)) { let ws = wordEyes.get(w); if (!ws) { ws = new Set(); wordEyes.set(w, ws) } ws.add(pub) }
-      }
-    }
-    const words = [...wordEyes.entries()].sort((a, b) => b[1].size - a[1].size).slice(0, 80).map((x) => x[0])
+    const s = brain.substrate
+    const scores = s.tournamentScores()
+    const words = [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 80).map((x) => x[0])
     const wset = new Set(words)
-    const xy = words.map((w) => proj.project(glove.vec(w) || new Float32Array(glove.dim)))
-    const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: wordEyes.get(w).size, champ: false, drift: 0 }))
-    const edges = [...edgeEyes.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
-      .sort((a, b) => b[1].size - a[1].size).slice(0, 160).map(([k, s]) => { const [a, b] = unkey(k); return { a, b, hot: s.size } })
-    return json(res, { room: true, champion: brain.swarmChampion(), nodes, edges })
+    const xy = words.map((w) => proj.project(s.posOf(w)))
+    const nodes = words.map((w, i) => ({ w, x: xy[i][0], y: xy[i][1], heat: +scores.get(w).toFixed(2), champ: w === s.champion, drift: +s.drift(w).toFixed(3) }))
+    const edges = [...s.Tassoc.entries()].filter(([k]) => { const [a, b] = unkey(k); return wset.has(a) && wset.has(b) })
+      .sort((a, b) => b[1] - a[1]).slice(0, 160).map(([k, hot]) => { const [a, b] = unkey(k); return { a, b, hot: +hot.toFixed(2) } })
+    return json(res, { champion: s.champion, nodes, edges })
   }
 
   json(res, { error: 'not found' }, 404)
@@ -413,7 +354,7 @@ code{color:#9cf;background:#0f141c;padding:2px 5px;border-radius:4px}b.k{color:#
 p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{padding-left:4px}</style>
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
-<div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · swarm champion <b id=barswarm style="color:#fd7">—</b></div>
+<div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · universal champion <b id=barswarm style="color:#fd7">—</b></div>
 <nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b></nav>
 
 <section id=connect class="panel on">
@@ -538,11 +479,11 @@ async function mint(){
 const log=$('log'),sw=$('swarm'),es=new EventSource('/stream')
 es.onmessage=e=>{const d=JSON.parse(e.data)
  if(d.docked!==undefined)$('docked').textContent=d.docked
- if(d.swarm){sw.textContent='swarm champion: '+d.swarm;const bs=$('barswarm');if(bs)bs.textContent=d.swarm}
- if(!d.eye)return
+ if(d.champion!==undefined){sw.textContent='champion: '+d.champion;const bs=$('barswarm');if(bs)bs.textContent=d.champion}
  const el=document.createElement('div')
- if(d.thought!==undefined){el.className='ev think';el.innerHTML='<span class=tag>thinking</span> <span class=eye>'+d.eye+'</span> from <span class=seed>'+d.seed+'</span><br><span class=thought>'+d.thought+'</span>'}
- else{el.className='ev spoke';el.innerHTML='<span class=tag>spoke</span> <span class=eye>'+d.eye+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}
+ if(d.thought!==undefined){el.className='ev think';el.innerHTML='<span class=tag>the brain thinks</span> from <span class=seed>'+d.seed+'</span><br><span class=thought>'+d.thought+'</span>'}
+ else if(d.voice!==undefined){el.className='ev spoke';el.innerHTML='<span class=tag>fed by</span> <span class=eye>'+(d.by||'')+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}
+ else return
  log.prepend(el);while(log.children.length>50)log.lastChild.remove()}
 </script>`
 

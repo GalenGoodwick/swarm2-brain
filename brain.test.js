@@ -133,9 +133,10 @@ function randVecSpace(nWords, dim, seed) {
   const brain = new Brain(g)
   brain.speak('me', [1, 2, 3, 4, 5].map(wname).join(' '))
   brain.speak('stub', [6, 7, 8, 2, 3].map(wname).join(' '))
-  ok('brain holds two independent eyes', brain.eyes.size === 2)
-  ok('eyes have independent thread graphs', brain.eye('me').Tseq !== brain.eye('stub').Tseq)
-  ok('swarm champion resolves over the union', typeof brain.swarmChampion() === 'string')
+  ok('ONE universal brain (not per-eye)', brain.substrate.Tassoc.size > 0 && !brain.eyes)
+  ok('two participants registered', brain.participants.size === 2)
+  ok('one universal champion over the shared brain', typeof brain.substrate.champion === 'string')
+  ok('provenance: a shared word carries both contributors', (brain.substrate.provenance.get(wname(2)) || new Set()).size === 2)
 }
 
 // ── Gate 8: basin orthogonal projection removes the basin component (leak ~0) ──
@@ -305,11 +306,12 @@ function randVecSpace(nWords, dim, seed) {
 {
   const g = mockProvider(randVecSpace(24, 6, 5))
   const brain = new Brain(g)
-  brain.speak('quiet', [1, 2, 3, 4, 5].map(wname).join(' '))            // speaks once, goes idle
-  for (let i = 0; i < 300; i++) brain.speak('loud', [6, 7, 8, 9, 10].map(wname).join(' '))
-  ok('idle eye fades from the live swarm (weight < 0.02)', brain.swarmWeight(brain.eye('quiet')) < 0.02)
-  ok('recently-active eye stays full weight', brain.swarmWeight(brain.eye('loud')) > 0.9)
-  ok('but the idle eye keeps its own identity (threads intact)', brain.eye('quiet').Tassoc.size > 0)
+  brain.speak('alice', [1, 2, 3, 4, 5].map(wname).join(' '))
+  brain.speak('bob', [3, 4, 5, 6, 7].map(wname).join(' '))              // overlaps on 3,4,5
+  const common = brain.substrate.commonWords(2)
+  ok('consensus = words carried by >=2 distinct participants', common.some((c) => c.word === wname(3)))
+  const distinct = brain.substrate.distinctWords()
+  ok('distinct = what a participant uniquely brought', Object.values(distinct).flat().includes(wname(1)))
 }
 
 // ── Gate 18: the Unity Chant tiered tournament crowns a champion (cells/evaluators/tiers) ──
