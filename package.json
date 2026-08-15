@@ -1,0 +1,11 @@
+{
+  "name": "swarm2-brain",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "swarm2 — the live pristine-GloVe thread brain (rung 1)",
+  "scripts": {
+    "test": "node brain.test.js",
+    "pack": "node pack-glove.js",
+    "start": "node server.js"
+  }
+}
