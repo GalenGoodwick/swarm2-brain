@@ -438,7 +438,62 @@ export class Eye {
     }
     return { path, text: path.join(' ') }
   }
-  speak(len = WALK_LEN) { return this.reverseTournament(len).text }
+  // SPEAK — autoregressive generation by the tournament itself. Start at a seed (the
+  // champion = the meta precedent). Each next word is a TOURNAMENT among the previous
+  // word's REAL T_seq successors (never a hop — so every step is a real transition =
+  // grammar), conditioned on the last few words, with the evaluator panel grading the
+  // gradient of what fits next. One mechanism crowns identity AND generates each word.
+  speak(len = WALK_LEN, seed = this.champion) {
+    if (!seed) return ''
+    // T_seq adjacency, built once
+    const adj = new Map()
+    for (const [k, hot] of this.Tseq) {
+      const [a, b] = unkey(k)
+      let l = adj.get(a); if (!l) { l = []; adj.set(a, l) }
+      l.push([b, hot])
+    }
+    // evaluator pool (champion-biased content words), built once
+    const scores = this.tournamentScores()
+    const evalPool = [...scores.entries()]
+      .filter(([w]) => !FUNCTION_WORDS.has(w)).sort((a, b) => b[1] - a[1]).map((x) => x[0]).slice(0, 120)
+    const out = [seed]
+    const usedContent = new Set(FUNCTION_WORDS.has(seed) ? [] : [seed])
+    for (let step = 0; step < len; step++) {
+      const prev = out[out.length - 1]
+      const cands = (adj.get(prev) || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
+      if (!cands.length) break                         // boundary: no real continuation
+      const next = this._wordTournament(cands, out.slice(-3), evalPool)
+      if (!next) break
+      out.push(next)
+      if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
+    }
+    return out.join(' ')
+  }
+
+  // one word-position tournament: candidates are the real successors; each is graded by
+  // its transition strength AND how well the evaluator panel (shifted toward the current
+  // context) agrees it fits here. That agreement is the gradient; the champion is the word.
+  _wordTournament(cands, ctx, evalPool) {
+    if (cands.length === 1) return cands[0][0]
+    const cvec = new Float32Array(this.dim); let n = 0
+    for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
+    if (n) for (let i = 0; i < this.dim; i++) cvec[i] /= n
+    const evals = this._pickEvaluators(NUM_EVALUATORS, cands.map((c) => c[0]), evalPool)
+    let best = null, bestS = -Infinity
+    for (const [c, hot] of cands) {
+      const cv = this.posOf(c); if (!cv) continue
+      let agree = 0
+      for (const ev of evals) {
+        const e0 = this.posOf(ev); if (!e0) continue
+        let d = 0; for (let i = 0; i < this.dim; i++) d += (e0[i] * 0.7 + cvec[i] * 0.3) * cv[i]  // ev shifted toward context
+        agree += d
+      }
+      const fit = evals.length ? agree / evals.length : 0
+      const s = Math.log(1 + hot) * (fit + 1)          // transition strength × contextual fit
+      if (s > bestS) { bestS = s; best = c }
+    }
+    return best || cands[0][0]
+  }
 
   // SHIFT (m28) — the champion DEFORMS the field. It pulls behaviourally-related words'
   // living positions toward it (champion execution / convergence) and pushes unrelated

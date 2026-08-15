@@ -323,4 +323,17 @@ function randVecSpace(nWords, dim, seed) {
   ok('tournament is deterministic (same graph → same champion)', c1 === c2)
 }
 
+// ── Gate 19: autoregressive speak — every step is a REAL T_seq transition (no hops) ──
+{
+  const g = mockProvider({ a: [1, 0, 0], b: [0, 1, 0], c: [0, 0, 1], d: [1, 1, 0], e: [0, 1, 1] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.Tseq.set('a b', 3); eye.Tseq.set('b c', 2); eye.Tseq.set('c d', 1); eye.Tseq.set('a e', 1)
+  eye.Tassoc.set('a b', 1); eye.Tassoc.set('b c', 1); eye.Tassoc.set('c d', 1); eye.Tassoc.set('a e', 1)
+  eye.champion = 'a'
+  const s = eye.speak(6).split(' ')
+  ok('speak starts from the seed/champion', s[0] === 'a')
+  ok('every generated step is a real T_seq transition (no hops)',
+    s.slice(0, -1).every((w, i) => eye.Tseq.has(w + ' ' + s[i + 1])))
+}
+
 console.log(`\n  ${passed} gates passed.`)

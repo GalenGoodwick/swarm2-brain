@@ -172,7 +172,7 @@ setInterval(() => {
       if (!seeds.length) continue
       const i = (rot[id] = (rot[id] || 0) + 1)
       const seed = seeds[i % seeds.length]
-      const { text } = eye.reverseTournament(10, seed)
+      const text = eye.speak(12, seed)                 // autoregressive tournament generation
       if (text.split(' ').length < 2 || text === lastThought[id]) continue   // skip dead-ends + repeats
       lastThought[id] = text
       broadcast({ t: Date.now(), eye: pubOf(id), thought: text, seed, champion: eye.champion, swarm: brain.swarmChampion(), docked: dockedCount() })
