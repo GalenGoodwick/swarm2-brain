@@ -245,28 +245,31 @@ export class Eye {
   // panels (two-pass deliberation); winners advance through tiers until one remains.
   tournamentChampion() {
     const scores = this.tournamentScores()
-    let cands = [...scores.keys()].filter((w) => !FUNCTION_WORDS.has(w))
-    if (cands.length <= 1) return cands[0] || null
-    cands.sort((a, b) => scores.get(b) - scores.get(a))
-    cands = cands.slice(0, CAND_POOL)
-    let current = cands
+    // sort ONCE per crown (not per cell) and bound the pool — evaluators come from the top
+    // of the field. This keeps the tournament cheap enough to run every tick/input.
+    const ranked = [...scores.entries()]
+      .filter(([w]) => !FUNCTION_WORDS.has(w))
+      .sort((a, b) => b[1] - a[1]).map((x) => x[0])
+    if (ranked.length <= 1) return ranked[0] || null
+    const evalPool = ranked.slice(0, 120)
+    let current = ranked.slice(0, CAND_POOL)
     for (let tier = 0; tier < CHAMP_TIERS && current.length > 1; tier++) {
-      current = this._runTier(current, scores)
+      current = this._runTier(current, evalPool)
     }
     return current[0] || null
   }
   // one tier: round-robin candidates into cells (spreads the strong ones so they must win
   // a real bracket, not just top the global sum), run each cell, collect winners.
-  _runTier(cands, scores) {
+  _runTier(cands, evalPool) {
     const numCells = Math.max(1, Math.ceil(cands.length / CELL_SIZE))
     const cells = Array.from({ length: numCells }, () => [])
     cands.forEach((w, i) => cells[i % numCells].push(w))
-    return cells.map((cell) => (cell.length === 1 ? cell[0] : this._runCell(cell, scores)))
+    return cells.map((cell) => (cell.length === 1 ? cell[0] : this._runCell(cell, evalPool)))
   }
   // one cell: 5 evaluators score candidates from their positions (Pass 1), shift 20% toward
   // the deliberation field and re-score (Pass 2), then vote. Most votes wins (ties → score).
-  _runCell(cands, scores) {
-    const evals = this._pickEvaluators(NUM_EVALUATORS, cands, scores)
+  _runCell(cands, evalPool) {
+    const evals = this._pickEvaluators(NUM_EVALUATORS, cands, evalPool)
     if (!evals.length) return cands[0]
     const sc = cands.map((c) => evals.map((ev) => this._evaluatorScore(ev, c)))
     // Pass 1 preferences → deliberation field (centroid of preferred candidates' positions)
@@ -307,11 +310,10 @@ export class Eye {
   }
   // evaluators = content words near the top of the field (champion-biased) + some periphery
   // for multi-perspective, excluding the candidates themselves.
-  _pickEvaluators(n, exclude, scores) {
+  _pickEvaluators(n, exclude, evalPool) {
     const ex = new Set(exclude)
-    const pool = [...scores.keys()].filter((w) => !ex.has(w) && !FUNCTION_WORDS.has(w))
+    const pool = evalPool.filter((w) => !ex.has(w))   // evalPool is pre-sorted & bounded (≤120)
     if (pool.length <= n) return pool
-    pool.sort((a, b) => scores.get(b) - scores.get(a))
     const nTop = Math.ceil(n * 0.6)
     const top = pool.slice(0, nTop)
     const rest = pool.slice(nTop)
