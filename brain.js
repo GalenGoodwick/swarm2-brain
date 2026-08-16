@@ -830,21 +830,16 @@ export class Eye {
     const seeds = [...new Set([...inField.slice(0, 2), ...nearest])].slice(0, 4)
     if (!seeds.length && this.champion) seeds.push(this.champion)
     // candidate walks compete: the most prompt-relevant utterance wins
-    let best = null, bestS = -Infinity, bestJit = 0
+    let best = null, bestS = -Infinity
     for (let i = 0; i < seeds.length; i++) {
-      const t = this.speak(len, seeds[i], 2 + i)
+      const trace = []                               // trace THIS walk as it happens — the
+      const t = this.speak(len, seeds[i], 2 + i, trace)   // record matches the utterance exactly
       const ws = t.split(' ')
       if (ws.length < 2) continue
       let r = 0
       for (const w of ws) r += rel(w)
       const s = r / ws.length + 0.05 * ws.length
-      if (s > bestS) { bestS = s; best = { seed: seeds[i], response: t }; bestJit = 2 + i }
-    }
-    if (best) {
-      // replay the winning walk with tracing on — the roads not taken, per position
-      const trace = []
-      this.speak(len, best.seed, bestJit, trace)
-      best.trace = trace.filter((t) => t.notTaken.length)
+      if (s > bestS) { bestS = s; best = { seed: seeds[i], response: t, trace: trace.filter((x) => x.notTaken.length) } }
     }
     return best || { seed: null, response: '' }
   }
