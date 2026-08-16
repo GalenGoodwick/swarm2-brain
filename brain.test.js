@@ -387,4 +387,22 @@ function randVecSpace(nWords, dim, seed) {
   ok('no fatigue state exists (balance, not penalty)', eye.seedFatigue === undefined)
 }
 
+// ── Gate 23: crown eligibility — unwoven mints and unshared words cannot reign ──
+{
+  const g = mockProvider({ sea: [1, 0, 0], boat: [0.9, 0.4, 0], wave: [0.8, 0.5, 0.3], dock: [0.85, 0.45, 0.2] })
+  const brain = new Brain(g)
+  // one voice coins 'pentarch' amid rich context — a mint-centroid, said once
+  brain.speak('alice', 'sea boat wave pentarch dock')
+  brain.speak('bob', 'sea boat wave dock')                       // second voice, no pentarch
+  const s = brain.substrate
+  ok('the coined centroid word is minted', s.minted.has('pentarch'))
+  ok('unwoven mint is NOT crownable', !s._crownable('pentarch'))
+  ok('a shared real word IS crownable', s._crownable('boat'))
+  ok('champion is not the mint-centroid', s.champion !== 'pentarch')
+  // weave it: 3+ rich contexts AND a second voice — now it has earned eligibility
+  brain.speak('bob', 'sea boat pentarch wave dock')
+  brain.speak('bob', 'wave pentarch dock sea boat')
+  ok('woven + shared mint becomes crownable', s._crownable('pentarch'))
+}
+
 console.log(`\n  ${passed} gates passed.`)

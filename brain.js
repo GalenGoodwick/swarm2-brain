@@ -31,6 +31,7 @@ export const CAND_POOL = 25       // top candidates (by centrality) entering the
 // CHUNKING — the depth lever. A transition that recurs hot enough CRYSTALLIZES into one
 // node (waves·crash); chunks thread like words, so a "trigram" of chunks spans many real
 // words — context depth grows by hierarchy (the cradle's chunkGraph, ported).
+export const MINT_CROWN_N = 3     // a minted word must be woven from >=3 contexts to be crowned
 export const CHUNK_HOT = 2.6      // T_seq heat at which a bigram crystallizes (~3 recurrences)
 export const CHUNK_MAX_WORDS = 3  // max real words inside one chunk
 export const CHUNK_CAP = 400      // bounded chunk lexicon
@@ -128,6 +129,7 @@ export class Eye {
     this.minted = new Map()   // word -> Float32Array (unit) for OOV
     this.mintedN = new Map()  // word -> how many contexts it has been woven from (for refine)
     this.provenance = new Map() // word -> Set<eyeId> that contributed it (for consensus)
+    this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.champion = null
     this._centroid = null
@@ -209,9 +211,12 @@ export class Eye {
   absorb(text, eyeId = null) {
     this.tick++
     const raw = this._resolve(tokenizeContent(text))
-    if (eyeId) for (const w of raw) {            // provenance: who contributed each word
-      let s = this.provenance.get(w); if (!s) { s = new Set(); this.provenance.set(w, s) }
-      s.add(eyeId)
+    if (eyeId) {
+      this.contributors.add(eyeId)
+      for (const w of raw) {                     // provenance: who contributed each word
+        let s = this.provenance.get(w); if (!s) { s = new Set(); this.provenance.set(w, s) }
+        s.add(eyeId)
+      }
     }
     // CHUNKIFY — greedily fold known crystallized phrases into single nodes, so the
     // threads below are laid BETWEEN chunks: context depth grows by hierarchy.
@@ -338,12 +343,30 @@ export class Eye {
   // THE CHAMPION — crowned by the real Unity Chant tournament (ported from eye.js), not a
   // flat argmax. Top content candidates enter; they compete in cells judged by evaluator
   // panels (two-pass deliberation); winners advance through tiers until one remains.
+  // CROWN ELIGIBILITY (eligibility, not penalty — the balance law):
+  //  WOVEN — a minted word must have been refined from >= MINT_CROWN_N contexts. Minted
+  //   vectors are context-MEANS, i.e. accidental centroids that cosine-centrality over-
+  //   ranks (how 'pentarch' got crowned); weaving earns the crown honestly.
+  //  SHARED — with >=2 contributors, the collective champion must be carried by >=2
+  //   distinct voices. A word only one voice ever said cannot be the ONE brain's identity.
+  _crownable(w) {
+    if (FUNCTION_WORDS.has(w)) return false
+    const parts = w.includes('·') ? w.split('·') : [w]
+    for (const p of parts) if (this.minted.has(p) && (this.mintedN.get(p) || 0) < MINT_CROWN_N) return false
+    if (this.contributors.size >= 2) {
+      let shared = false
+      for (const p of parts) { const s = this.provenance.get(p); if (s && s.size >= 2) { shared = true; break } }
+      if (!shared) return false
+    }
+    return true
+  }
+
   tournamentChampion() {
     const scores = this.tournamentScores()
     // sort ONCE per crown (not per cell) and bound the pool — evaluators come from the top
     // of the field. This keeps the tournament cheap enough to run every tick/input.
     const ranked = [...scores.entries()]
-      .filter(([w]) => !FUNCTION_WORDS.has(w))
+      .filter(([w]) => this._crownable(w))
       .sort((a, b) => b[1] - a[1]).map((x) => x[0])
     if (ranked.length <= 1) return ranked[0] || null
     const evalPool = ranked.slice(0, 120)
@@ -724,7 +747,8 @@ export class Eye {
   // (shift/hebbian each tick) moves the frontier, so the elected speaker moves with it.
   seedTournament() {
     const ranked = [...this.tournamentScores().entries()]
-      .filter(([w]) => !FUNCTION_WORDS.has(w))
+      .filter(([w]) => !FUNCTION_WORDS.has(w) &&
+        !(this.minted.has(w) && (this.mintedN.get(w) || 0) < MINT_CROWN_N))   // woven only
       .sort((a, b) => b[1] - a[1]).map((x) => x[0])
     if (!ranked.length) return null
     if (ranked.length <= 3) return ranked[0]
