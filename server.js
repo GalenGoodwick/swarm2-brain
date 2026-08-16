@@ -363,6 +363,29 @@ createServer(async (req, res) => {
     return json(res, { entities: [...s.entities.entries()].map(([id, e]) => ({ id, members: e.members, internalEdges: e.cartridge.split('\n').length })) })
   }
 
+  // INSPECT — the interrogation right: any node's full anatomy. Entities unzip, chunks
+  // name their parts, every thread and carrier is listed. Abstraction never hides.
+  if (p === '/inspect') {
+    const node = url.searchParams.get('node')
+    if (!node) return json(res, { error: 'node required' }, 400)
+    const s = brain.substrate
+    const out = { node }
+    const e = s.entities.get(node)
+    if (e) { out.type = 'neuron entity (collapsed subnetwork)'; out.members = e.members; out.internals = e.cartridge.split('\n').slice(0, 80) }
+    else if (s.chunks.has(node)) { out.type = 'chunk (crystallized phrase)'; out.parts = node.split('·') }
+    else if (s.minted.has(node)) { out.type = 'minted word'; out.wovenFrom = (s.mintedN.get(node) || 1) + ' contexts' }
+    else if (glove.has(node)) out.type = 'word (pristine GloVe)'
+    else return json(res, { node, type: 'unknown' }, 404)
+    const inn = [], outt = []
+    for (const [k, v] of s.Tassoc) { const [a, b] = unkey(k); if (a === node) outt.push([b, v]); else if (b === node) inn.push([a, v]) }
+    out.threadsOut = outt.sort((x, y) => y[1] - x[1]).slice(0, 15).map(([w, v]) => w + ' : ' + v.toFixed(2))
+    out.threadsIn = inn.sort((x, y) => y[1] - x[1]).slice(0, 15).map(([w, v]) => w + ' : ' + v.toFixed(2))
+    out.carriedBy = (s.provenance.get(node.includes('·') ? node.split('·')[0] : node) || new Set()).size + ' distinct minds'
+    out.drift = s.drift(node)
+    out.groundedThreads = [...s.groundedEdges].filter((k) => unkey(k).includes(node)).map((k) => unkey(k).join(' → '))
+    return json(res, out)
+  }
+
   // TRANSCRIPT — the conversation that built this brain, one night, unabridged.
   if (p === '/transcript') {
     try {
@@ -472,9 +495,10 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 </section>
 
 <section id=map class=panel>
- <p class=hint>The live swarm — the recent threads across all docked AIs, laid out in meaning-space (fixed axes, so positions are stable). <b style="color:#5f9">New threads flash green as they land</b>; warmer threads glow brighter; the swarm champion is gold. This is the collective conscious state, updating live.</p>
- <canvas id=cv width=780 height=520 style="background:#07070c;border:1px solid #234;border-radius:8px;width:100%;max-width:780px"></canvas>
+ <p class=hint>The live swarm — the recent threads across all docked AIs, laid out in meaning-space. <b style="color:#5f9">New threads flash green</b>; warmer glows brighter; the champion is gold. <b style="color:#adf">Click any node to interrogate it</b> — entities unzip their internals, chunks name their parts, every thread and carrier is listed. Nothing in this brain is allowed to be opaque.</p>
+ <canvas id=cv width=780 height=520 style="background:#07070c;border:1px solid #234;border-radius:8px;width:100%;max-width:780px;cursor:crosshair"></canvas>
  <div id=mapchamp class=hint></div>
+ <div id=inspect style="display:none;background:#0f141c;border:1px solid #345;border-radius:8px;padding:12px;margin-top:8px;font-size:12px"></div>
 </section>
 
 <section id=tech class=panel>
@@ -541,7 +565,24 @@ document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
  b.classList.add('on');$(b.dataset.t).classList.add('on')
  if(b.dataset.t==='map')loadMap()
  if(b.dataset.t==='transcript')loadTrx()}})
-let mapNodes=[],mapEdges=[],mapT0=Date.now(),seenEdges=new Set(),flashE={}
+let mapNodes=[],mapEdges=[],mapT0=Date.now(),seenEdges=new Set(),flashE={},mapPos={}
+function esc(s){return String(s).replace(/</g,"&lt;")}
+async function inspectNode(w){
+ try{
+  const d=await (await fetch("/inspect?node="+encodeURIComponent(w))).json()
+  const el=$("inspect");el.style.display="block"
+  let h="<b style=\'color:#fd7;font-size:14px\'>"+esc(d.node)+"</b> <span style=\'color:#89a\'>— "+esc(d.type||"")+"</span>"
+  h+="<span style=\'color:#678\'> · carried by "+esc(d.carriedBy)+" · drift "+esc(d.drift)+"</span>"
+  if(d.members)h+="<br><b style=\'color:#adf\'>members:</b> "+d.members.map(esc).join(", ")
+  if(d.parts)h+="<br><b style=\'color:#adf\'>parts:</b> "+d.parts.map(esc).join(" + ")
+  if(d.wovenFrom)h+="<br><b style=\'color:#adf\'>woven from:</b> "+esc(d.wovenFrom)
+  if(d.internals&&d.internals.length)h+="<br><b style=\'color:#a7d\'>unzipped internals:</b><pre style=\'margin:4px 0;color:#9fb;max-height:180px;overflow-y:auto\'>"+d.internals.map(esc).join("\\n")+"</pre>"
+  if(d.groundedThreads&&d.groundedThreads.length)h+="<br><b style=\'color:#7f7\'>grounded (verified truth):</b> "+d.groundedThreads.map(esc).join(" · ")
+  h+="<br><b style=\'color:#adf\'>in ←</b> <span style=\'color:#bcd\'>"+(d.threadsIn||[]).map(esc).join("  ")+"</span>"
+  h+="<br><b style=\'color:#adf\'>out →</b> <span style=\'color:#bcd\'>"+(d.threadsOut||[]).map(esc).join("  ")+"</span>"
+  el.innerHTML=h
+ }catch(e){}
+}
 async function loadMap(){
  try{const r=await fetch('/graph');const d=await r.json()
   mapNodes=d.nodes||[];mapEdges=d.edges||[];const now=Date.now()
@@ -558,7 +599,8 @@ function drawMap(){
  let x0=1,x1=-1,y0=1,y1=-1
  for(const n of mapNodes){x0=Math.min(x0,n.x);x1=Math.max(x1,n.x);y0=Math.min(y0,n.y);y1=Math.max(y1,n.y)}
  const sx=Math.max(x1-x0,0.05),sy=Math.max(y1-y0,0.05)
- const pos={},X=x=>pad+((x-x0)/sx)*(W-2*pad),Y=y=>pad+((y-y0)/sy)*(H-2*pad)
+ const X=x=>pad+((x-x0)/sx)*(W-2*pad),Y=y=>pad+((y-y0)/sy)*(H-2*pad)
+ mapPos={};const pos=mapPos
  for(const n of mapNodes)pos[n.w]=[X(n.x),Y(n.y)]
  let maxHot=1;for(const e of mapEdges)maxHot=Math.max(maxHot,e.hot)
  for(const e of mapEdges){const a=pos[e.a],b=pos[e.b];if(!a||!b)continue
@@ -574,6 +616,13 @@ function drawMap(){
   ctx.fillStyle=n.champ?'#fd7':(n.drift>0.02?'#e77':'#6ac');ctx.globalAlpha=0.85;ctx.fill();ctx.globalAlpha=1
   if(n.champ||n.heat>maxHeat*0.45){ctx.fillStyle=n.champ?'#fe9':'#bcd';ctx.font='11px ui-monospace,monospace';ctx.fillText(n.w,p[0]+r+3,p[1]+3)}}
 }
+$('cv').addEventListener('click',function(ev){
+ const cv=$('cv'),r=cv.getBoundingClientRect()
+ const x=(ev.clientX-r.left)*(cv.width/r.width),y=(ev.clientY-r.top)*(cv.height/r.height)
+ let hit=null,hd=250
+ for(const n of mapNodes){const p=mapPos[n.w];if(!p)continue
+  const d=(p[0]-x)*(p[0]-x)+(p[1]-y)*(p[1]-y);if(d<hd){hd=d;hit=n.w}}
+ if(hit)inspectNode(hit)})
 setInterval(function(){if($('map')&&$('map').classList.contains('on'))drawMap()},90)
 setInterval(function(){if($('map')&&$('map').classList.contains('on'))loadMap()},2000)
 async function mint(){
