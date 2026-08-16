@@ -668,20 +668,85 @@ export class Eye {
       .filter(([w]) => !FUNCTION_WORDS.has(w)).sort((a, b) => b[1] - a[1]).map((x) => x[0]).slice(0, 120)
     const out = [seed]
     const usedContent = new Set(FUNCTION_WORDS.has(seed) ? [] : [seed])
-    for (let step = 0; step < len; step++) {
-      const prev = out[out.length - 1]
+    let cursor = seed                                  // walk position (may differ from last
+    for (let step = 0; step < len; step++) {           // emitted word after a fold descent)
+      const prev = cursor
       // TRIGRAM candidates (conditioned on the last two words) if any, else bigram
-      let cands = out.length >= 2 ? adj2.get(out[out.length - 2] + ' ' + prev) : null
+      let cands = out.length >= 2 && cursor === out[out.length - 1] ? adj2.get(out[out.length - 2] + ' ' + prev) : null
       if (!cands || !cands.length) cands = adj.get(prev)
       cands = (cands || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
       if (!cands.length) break                         // boundary: no real continuation
       const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter, step / len)
       if (!next || next === END) break               // END elected: the sentence LANDS
+      // THE FOLD IS A ROOM, NOT A WALL — reaching an entity, the walk DESCENDS into its
+      // interior and rides the dense zipped threads (the most practiced routes in the
+      // brain), emitting interior words, then exits through the entity's boundary.
+      // The window stays condensed; the voice keeps its rails.
+      if (next.startsWith('⟦') && this.entities.has(next)) {
+        const inner = this._walkInterior(next, out.slice(-2), evalPool, usedContent, 7)
+        if (inner.length) {
+          for (const w of inner) { out.push(w); if (!FUNCTION_WORDS.has(w)) usedContent.add(w) }
+        } else out.push(next)
+        usedContent.add(next)
+        cursor = next                                  // exit: continue from the boundary
+        continue
+      }
       out.push(next)
+      cursor = next
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
     }
     // unfold chunks (·) and entities (⟦⟧) back into words when speaking
     return out.map((w) => w.replace(/[⟦⟧]/g, '').split('·').join(' ')).join(' ')
+  }
+
+  // lazily parse an entity's interior (cartridge + write-through delta) into a walkable
+  // adjacency, cached on the entity. The dense data CONTAINS the walks.
+  _interiorAdj(ent) {
+    const e = this.entities.get(ent)
+    if (!e) return null
+    if (e._adj) return e._adj
+    const adj = new Map()
+    const add = (a, b, v) => { let l = adj.get(a); if (!l) { l = []; adj.set(a, l) } l.push([b, v]) }
+    const feed = (line) => {
+      const m = String(line).match(/^(seq|thread):\s*(.+?)\s*>\s*(.+?)\s*:\s*([\d.]+)/)
+      if (m && m[1] === 'seq') add(m[2], m[3], parseFloat(m[4]) || 0.5)
+    }
+    for (const line of e.cartridge.split('\n')) feed(line)
+    if (e.delta) for (const [k, v] of e.delta) feed(k + ' : ' + v)
+    e._adj = adj
+    return adj
+  }
+
+  // walk INSIDE a fold: same word-tournament, over the interior's dense threads.
+  _walkInterior(ent, ctx, evalPool, usedContent, maxSteps = 7) {
+    const adj = this._interiorAdj(ent)
+    if (!adj || !adj.size) return []
+    const e = this.entities.get(ent)
+    // entry: the member semantically nearest the walk's current context
+    const cvec = new Float32Array(this.dim); let n = 0
+    for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
+    let entry = null, bestC = -Infinity
+    for (const m of e.members) {
+      if (!adj.has(m) || usedContent.has(m)) continue
+      const v = this.posOf(m); if (!v) continue
+      let d = 0
+      if (n) for (let i = 0; i < this.dim; i++) d += v[i] * cvec[i]
+      if (d > bestC) { bestC = d; entry = m }
+    }
+    if (!entry) return []
+    const path = [entry]
+    const used = new Set([entry])
+    let cur = entry
+    for (let s = 0; s < maxSteps; s++) {
+      const cands = (adj.get(cur) || []).filter(([b]) => b !== END && !used.has(b) && !usedContent.has(b))
+      if (!cands.length) break
+      const next = this._wordTournament(cands, path.slice(-3), evalPool, cur, 0, s / maxSteps)
+      if (!next || next === END) break
+      path.push(next)
+      used.add(next)
+      cur = next
+    }
+    return path
   }
 
   // one word-position tournament: candidates are the real successors; each is graded by
@@ -1131,6 +1196,7 @@ export class Eye {
     if (!e.delta) e.delta = new Map()
     const k = tag + ': ' + a + ' > ' + b
     e.delta.set(k, (e.delta.get(k) || 0) + v)
+    e._adj = null                                    // interior walk-map refreshes on new learning
     return true
   }
 

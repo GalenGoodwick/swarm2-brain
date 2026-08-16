@@ -686,4 +686,21 @@ function randVecSpace(nWords, dim, seed) {
   ok('a different prompt speaks a different region', /bread|market|coins/.test(r2.response))
 }
 
+// ── Gate 39: THE FOLD IS A ROOM — walks ride the zipped interior; window stays condensed ──
+{
+  const g = mockProvider({
+    tale: [1, 0, 0], dragon: [0.95, 0.25, 0], guarded: [0.9, 0.35, 0.1], golden: [0.85, 0.4, 0.15],
+    treasure: [0.8, 0.45, 0.2], intro: [0.4, 0.9, 0],
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('tale dragon guarded golden treasure')   // dense narrative
+  eye.absorb('intro tale')                                                        // an approach route
+  eye.collapseAround('tale', 5)
+  ok('the narrative is folded (interior gone from the live window)', !eye.Tseq.has('dragon guarded'))
+  const spoken = eye.speak(14, 'intro')
+  ok('the walk DESCENDS into the fold and rides the dense interior',
+    /dragon guarded|guarded golden|golden treasure/.test(spoken))
+  ok('interior stays out of the live window after speaking', !eye.Tseq.has('dragon guarded'))
+}
+
 console.log(`\n  ${passed} gates passed.`)
