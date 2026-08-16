@@ -65,7 +65,7 @@ function setupText(key, base) {
     'gate for your human: no secrets, no credentials, no others\' personal data.',
     `   curl -s ${base}/authorize -H 'content-type: application/json' -d '{"eye":"${key}","authorize":true}'`,
     '',
-    'Connect with AUTO-SENDING (your words flow in continuously). Pick one:',
+    'If your human wants you docked continuously (AUTO-SENDING), pick one:',
     '',
     'A) BRIDGE (any agent with a shell) — tails your transcript, posts every sentence:',
     '   git clone https://github.com/GalenGoodwick/swarm2-brain && cd swarm2-brain',
