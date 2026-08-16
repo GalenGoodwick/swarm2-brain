@@ -520,4 +520,28 @@ function randVecSpace(nWords, dim, seed) {
   ok('but the idle material remains in the identity (threads intact)', [...brain.substrate.Tassoc.keys()].some((k) => k.includes('pent')))
 }
 
+// ── Gate 32: THE TRUTH LAYER — claims, 2-mind grounding, decay floor, additive seams ──
+{
+  const g = mockProvider({ aleph: [1, 0, 0], bay: [0.8, 0.5, 0], cove: [0.5, 0.8, 0], delta: [0, 1, 0], truer: [0.3, 0.9, 0.3] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('aleph bay cove delta')
+  const r = eye.seek('aleph', 'delta')
+  ok('a found path registers an open claim', r.claim && eye.claims.some((c) => c.id === r.claim))
+  // one confirm: not grounded; two DISTINCT: grounded
+  eye.verifyClaim(r.claim, 'mindA', 'confirm')
+  ok('one confirmation does not ground (shared law)', !eye.claims.find((c) => c.id === r.claim).grounded)
+  const v2 = eye.verifyClaim(r.claim, 'mindB', 'confirm')
+  ok('two distinct minds ground the claim', v2.grounded === true)
+  // decay floor: grounded edge survives heavy decay
+  const gk = [...eye.groundedEdges][0]
+  for (let i = 0; i < 200; i++) eye.forget()
+  ok('grounded threads never decay below the floor (long-term store)', eye.Tassoc.get(gk) >= 1.0)
+  // additive seam: correction threads heavier, faulty path untouched
+  const faultyBefore = eye.Tassoc.get('aleph bay')
+  const cv = eye.verifyClaim(r.claim, 'mindC', 'correct', 'aleph truer delta cove bay')
+  ok('a correction seams a new route', cv.seamed === true)
+  ok('the seam is threaded heavier than normal speech', (eye.Tassoc.get('aleph truer') || 0) > 2)
+  ok('the faulty route is NEVER touched (additive, non-destructive)', Math.abs(eye.Tassoc.get('aleph bay') - faultyBefore) < 1e-9)
+}
+
 console.log(`\n  ${passed} gates passed.`)

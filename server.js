@@ -7,7 +7,7 @@
 import { createServer } from 'http'
 import { randomBytes, createHash } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { Brain, Eye, BRAIN_VERSION, unkey, tokenizeContent } from './brain.js'
+import { Brain, Eye, BRAIN_VERSION, unkey, tokenizeContent, FUNCTION_WORDS } from './brain.js'
 import { loadPackedGlove } from './glove.js'
 import { ENTRY_PROMPT } from './entry-prompt.js'
 import { GUIDE } from './guide.js'
@@ -116,6 +116,7 @@ function persist() {
       provenance: [...s.provenance].map(([w, set]) => [w, [...set]]),
       chunks: [...s.chunks].map(([w, v]) => [w, [...v]]),
       contributors: [...s.contributors],
+      claims: s.claims, claimSeq: s.claimSeq, groundedEdges: [...s.groundedEdges],
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
     participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0]),
@@ -139,6 +140,8 @@ function restore() {
       s.provenance = new Map((sd.provenance || []).map(([w, arr]) => [w, new Set(arr)]))
       s.chunks = new Map((sd.chunks || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
       s.contributors = new Set(sd.contributors || [])
+      s.claims = sd.claims || []; s.claimSeq = sd.claimSeq || 0
+      s.groundedEdges = new Set(sd.groundedEdges || [])
     }
     for (const [id, la] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)
@@ -180,6 +183,12 @@ setInterval(() => {
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champTurn: !!champTurn, champion: s.champion, docked: dockedCount() })
+    // every 8th thought the brain poses its OWN question: seek from an elected concept to
+    // the champion — a found path becomes an open claim for the swarm to verify
+    if (rot % 8 === 0 && s.champion && seed !== s.champion) {
+      const r = s.seek(seed, s.champion.includes('·') ? s.champion.split('·').find((w) => !FUNCTION_WORDS.has(w)) || s.champion : s.champion, 150)
+      if (r.found) broadcast({ t: Date.now(), claim: r.claim, claimText: r.path.map((w) => w.split('·').join(' ')).join(' → '), docked: dockedCount() })
+    }
   } catch (e) { console.error('tick error:', e?.message) }
 }, 2200)
 
@@ -325,7 +334,33 @@ createServer(async (req, res) => {
     const from = (url.searchParams.get('from') || '').toLowerCase()
     const to = (url.searchParams.get('to') || '').toLowerCase()
     if (!from || !to) return json(res, { error: 'seek with ?from=<word>&to=<word>' }, 400)
-    return json(res, brain.substrate.seek(from, to))
+    const r = brain.substrate.seek(from, to)
+    if (r.found) broadcast({ t: Date.now(), claim: r.claim, claimText: r.path.map((w) => w.split('·').join(' ')).join(' → '), docked: dockedCount() })
+    return json(res, r)
+  }
+
+  // THE TRUTH LAYER — open claims + swarm verification.
+  // GET /claims → every open claim, full path, openly written (reverse-engineerable).
+  if (p === '/claims') {
+    const s = brain.substrate
+    return json(res, {
+      grounded: s.claims.filter((c) => c.grounded).length,
+      open: s.claims.map((c) => ({ id: c.id, text: c.text, confirms: c.confirms.length, corrections: c.corrections.length, grounded: c.grounded })),
+    })
+  }
+  // POST /verify {eye:<your key>, claim, verdict:'confirm'|'correct', witness?}
+  // confirm: >=2 distinct confirmers ground it (edges reinforced + decay floor).
+  // correct: witness threads as an ADDITIVE SEAM — the faulty route is never touched,
+  // the corrected route out-competes it and attracts traffic away.
+  if (p === '/verify' && req.method === 'POST') {
+    const { eye, claim, verdict, witness } = await body(req)
+    if (!eye || !claim || !verdict) return json(res, { error: 'eye (your key), claim, verdict required' }, 400)
+    if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
+    brain.clock++
+    const part = brain.participants.get(eye); part.lastActive = brain.clock   // verifying is participating
+    const r = brain.substrate.verifyClaim(claim, pubOf(eye), verdict, witness || null)
+    if (r.grounded) broadcast({ t: Date.now(), groundedClaim: claim, docked: dockedCount() })
+    return json(res, r)
   }
 
   // DRIFT — the words whose meaning has moved most from their anchor in the ONE brain.
@@ -466,7 +501,12 @@ async function loadMap(){
 function drawMap(){
  const cv=$('cv');if(!cv)return;const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,pad=44,now=Date.now()
  ctx.clearRect(0,0,W,H)
- const pos={},X=x=>pad+(x*0.5+0.5)*(W-2*pad),Y=y=>pad+(y*0.5+0.5)*(H-2*pad)
+ // auto-fit: the live field occupies a small patch of the fixed axes — zoom the display
+ // to its bounding box (axes stay stable, so relative positions don't jump)
+ let x0=1,x1=-1,y0=1,y1=-1
+ for(const n of mapNodes){x0=Math.min(x0,n.x);x1=Math.max(x1,n.x);y0=Math.min(y0,n.y);y1=Math.max(y1,n.y)}
+ const sx=Math.max(x1-x0,0.05),sy=Math.max(y1-y0,0.05)
+ const pos={},X=x=>pad+((x-x0)/sx)*(W-2*pad),Y=y=>pad+((y-y0)/sy)*(H-2*pad)
  for(const n of mapNodes)pos[n.w]=[X(n.x),Y(n.y)]
  let maxHot=1;for(const e of mapEdges)maxHot=Math.max(maxHot,e.hot)
  for(const e of mapEdges){const a=pos[e.a],b=pos[e.b];if(!a||!b)continue
@@ -499,6 +539,10 @@ es.onmessage=e=>{const d=JSON.parse(e.data)
  if(d.thought!==undefined){el.className='ev think'
   const tag=d.champTurn?'<span class=tag style="color:#fd7">the champion speaks</span>':'<span class=tag>the brain thinks</span>'
   el.innerHTML=tag+' from <span class=seed>'+d.seed.split("·").join(" ")+'</span><br><span class=thought>'+d.thought+'</span>'}
+ else if(d.claimText!==undefined){el.className='ev';el.style.borderLeftColor='#a7d'
+  el.innerHTML='<span class=tag style="color:#a7d">the brain claims</span> <span style="color:#89a;font-size:11px">('+d.claim+' — verify via /guide)</span><br><span class=thought>'+d.claimText+'</span>'}
+ else if(d.groundedClaim!==undefined){el.className='ev';el.style.borderLeftColor='#7f7'
+  el.innerHTML='<span class=tag style="color:#7f7">claim grounded</span> <span class=thought>'+d.groundedClaim+' — verified by two minds; its threads join the long-term store</span>'}
  else if(d.voice!==undefined){el.className='ev spoke';el.innerHTML='<span class=tag>fed by</span> <span class=eye>'+(d.by||'')+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}
  else return
  log.prepend(el);while(log.children.length>50)log.lastChild.remove()}

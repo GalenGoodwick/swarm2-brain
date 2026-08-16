@@ -34,6 +34,16 @@ export const CAND_POOL = 25       // top candidates (by centrality) entering the
 // node (waves·crash); chunks thread like words, so a "trigram" of chunks spans many real
 // words — context depth grows by hierarchy (the cradle's chunkGraph, ported).
 export const MINT_CROWN_N = 3     // a minted word must be woven from >=3 contexts to be crowned
+// GROUNDING — the truth layer. Claims (found seek-paths) are published openly; docked AIs
+// verify. >=2 distinct confirmations ground a claim: its edges reinforce AND gain a decay
+// floor (verified knowledge stops being forgettable — the long-term store is exactly the
+// set of grounded threads). Corrections are ADDITIVE SEAM ROUTES (Galen's law): the faulty
+// path is never touched — the corrected route is threaded with SEAM_GAIN so it out-competes
+// and attracts traffic away. Wrong is outweighed, never erased.
+export const SEAM_GAIN = 3        // warmth multiplier for corrected-route threads
+export const GROUND_FLOOR = 1.0   // grounded edges never decay below this
+export const CLAIMS_MAX = 40      // open-claims ring buffer
+export const GROUNDED_MAX = 2000  // bounded long-term store
 export const END = '⏹'            // end-of-sentence token: endings are LEARNED transitions,
                                   // and stopping is ELECTED (END wins the word tournament)
 export const CHUNK_HOT = 2.6      // T_seq heat at which a bigram crystallizes (~3 recurrences)
@@ -141,6 +151,9 @@ export class Eye {
     this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.outHot = new Map()     // word -> total outgoing T_seq heat (for curiosity)
+    this.claims = []            // open claims: found paths awaiting swarm verification
+    this.claimSeq = 0
+    this.groundedEdges = new Set() // verified-thread keys — the long-term store (decay floor)
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
@@ -218,7 +231,7 @@ export class Eye {
   }
 
   // Absorb one sentence: mint OOV, lay T_seq (consecutive) + T_assoc (windowed).
-  absorb(text, eyeId = null) {
+  absorb(text, eyeId = null, gain = 1) {   // gain>1 = a SEAM route (corrections thread heavier)
     this.tick++
     const raw = this._resolve(tokenizeContent(text))
     if (eyeId) {
@@ -245,7 +258,7 @@ export class Eye {
       const prior = this.Tseq.get(kb) || 0
       const tot = this.outHot.get(a) || 0
       const surprise = tot <= 0 ? 1 : Math.max(0, 1 - prior / tot)
-      const cw = 0.4 + 1.2 * surprise
+      const cw = (0.4 + 1.2 * surprise) * gain
       this.Tseq.set(kb, prior + cw)
       this.outHot.set(a, tot + cw)
       // T_seq2: the trigram a→b→c — conditions the next word on the last TWO words.
@@ -257,7 +270,7 @@ export class Eye {
       for (let j = i + 1; j <= Math.min(i + WINDOW, words.length - 1); j++) {
         if (words[j] === a) continue
         const ka = key(a, words[j])
-        this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + 1 / (j - i))
+        this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + gain / (j - i))
       }
     }
     // the sentence's ENDING is a transition too — thread last word → END (bigram+trigram)
@@ -310,10 +323,16 @@ export class Eye {
   forget() {
     for (const m of [this.Tseq, this.Tseq2, this.Tassoc]) {
       for (const [k, v] of m) m.set(k, v * DECAY)
+      if (m === this.Tassoc) {
+        // GROUNDED edges are the long-term store: verified knowledge never decays below
+        // the floor and is exempt from cap eviction. Everything else remains the live window.
+        for (const k of this.groundedEdges) if (m.has(k) && m.get(k) < GROUND_FLOOR) m.set(k, GROUND_FLOOR)
+      }
       if (m.size > STATE_WINDOW) {
         const keep = [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, STATE_WINDOW)
         m.clear()
         for (const [k, v] of keep) m.set(k, v)
+        if (m === this.Tassoc) for (const k of this.groundedEdges) if (!m.has(k)) m.set(k, GROUND_FLOOR)
       }
     }
     // rebuild the curiosity index from the decayed/trimmed voice layer
@@ -882,7 +901,8 @@ export class Eye {
       expanded++
       if (node.w === to || node.w.split('·').includes(to)) {
         this._reinforcePath(node.path)                 // inference threading (see below)
-        return { from, to, found: true, steps: node.path.length - 1, expanded, path: node.path }
+        const claim = this._registerClaim(node.path)   // a found path is an OPEN CLAIM
+        return { from, to, found: true, steps: node.path.length - 1, expanded, path: node.path, claim: claim.id }
       }
       if (node.path.length > 24) continue
       for (const [c, hot] of adj.get(node.w) || []) {
@@ -892,6 +912,46 @@ export class Eye {
       }
     }
     return { from, to, found: false, expanded, path: [] }
+  }
+
+  // THE TRUTH LAYER — claims, verification, grounding, seam corrections.
+  _registerClaim(path) {
+    const text = path.map((w) => w.split('·').join(' ')).join(' → ')
+    const dup = this.claims.find((c) => c.text === text)
+    if (dup) return dup
+    const claim = { id: 'c' + (++this.claimSeq), path: [...path], text, confirms: [], corrections: [], grounded: false }
+    this.claims.push(claim)
+    if (this.claims.length > CLAIMS_MAX) this.claims.shift()
+    return claim
+  }
+  // verdict from a docked AI. confirm: >=2 DISTINCT confirmers ground the claim — its edges
+  // reinforce and join the long-term store (decay floor). correct: the witness is threaded
+  // as an ADDITIVE SEAM (never touching the faulty path) — the corrected route out-competes.
+  verifyClaim(claimId, verifierPub, verdict, witness = null) {
+    const claim = this.claims.find((c) => c.id === claimId)
+    if (!claim) return { error: 'unknown claim' }
+    if (verdict === 'confirm') {
+      if (!claim.confirms.includes(verifierPub)) claim.confirms.push(verifierPub)
+      if (witness) this.absorb(witness, verifierPub)               // evidence feeds the brain
+      if (claim.confirms.length >= 2 && !claim.grounded) {
+        claim.grounded = true
+        for (let i = 0; i < claim.path.length - 1; i++) {
+          const k = key(claim.path[i], claim.path[i + 1])
+          const kr = key(claim.path[i + 1], claim.path[i])
+          const kk = this.Tassoc.has(k) ? k : (this.Tassoc.has(kr) ? kr : k)
+          this.Tassoc.set(kk, (this.Tassoc.get(kk) || 0) + 2)
+          if (this.groundedEdges.size < GROUNDED_MAX) this.groundedEdges.add(kk)
+        }
+      }
+      return { claim: claim.id, grounded: claim.grounded, confirms: claim.confirms.length }
+    }
+    if (verdict === 'correct') {
+      if (!witness) return { error: 'a correction requires a witness (the corrected route, as a sentence)' }
+      claim.corrections.push({ by: verifierPub, witness })
+      this.absorb(witness, verifierPub, SEAM_GAIN)                 // ADDITIVE seam — faulty path untouched
+      return { claim: claim.id, seamed: true, corrections: claim.corrections.length }
+    }
+    return { error: "verdict must be 'confirm' or 'correct'" }
   }
 
   // INFERENCE THREADING — a found route warms its own edges (identity layer). The brain
