@@ -140,6 +140,7 @@ export class Eye {
     this.provenance = new Map() // word -> Set<eyeId> that contributed it (for consensus)
     this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
+    this.outHot = new Map()     // word -> total outgoing T_seq heat (for curiosity)
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
@@ -236,13 +237,21 @@ export class Eye {
     }
     for (let i = 0; i < words.length - 1; i++) {
       const a = words[i]
-      // T_seq: the single next word — a real grammatical transition.
+      // CURIOSITY — the voice layer learns by INFORMATION, not repetition. Before warming
+      // a transition, ask: would the brain have predicted it? A fully expected next word
+      // still warms (0.4 — nothing is punished); a surprising one warms 4x more (1.6).
+      // Identity (T_assoc) stays raw reflection — curiosity shapes only how it SPEAKS.
       const kb = key(a, words[i + 1])
-      this.Tseq.set(kb, (this.Tseq.get(kb) || 0) + 1)
+      const prior = this.Tseq.get(kb) || 0
+      const tot = this.outHot.get(a) || 0
+      const surprise = tot <= 0 ? 1 : Math.max(0, 1 - prior / tot)
+      const cw = 0.4 + 1.2 * surprise
+      this.Tseq.set(kb, prior + cw)
+      this.outHot.set(a, tot + cw)
       // T_seq2: the trigram a→b→c — conditions the next word on the last TWO words.
       if (i < words.length - 2) {
         const k3 = a + ' ' + words[i + 1] + ' ' + words[i + 2]
-        this.Tseq2.set(k3, (this.Tseq2.get(k3) || 0) + 1)
+        this.Tseq2.set(k3, (this.Tseq2.get(k3) || 0) + cw)
       }
       // T_assoc: this word to the next WINDOW words, distance-decayed 1/(j-i).
       for (let j = i + 1; j <= Math.min(i + WINDOW, words.length - 1); j++) {
@@ -306,6 +315,12 @@ export class Eye {
         m.clear()
         for (const [k, v] of keep) m.set(k, v)
       }
+    }
+    // rebuild the curiosity index from the decayed/trimmed voice layer
+    this.outHot.clear()
+    for (const [k, v] of this.Tseq) {
+      const a = unkey(k)[0]
+      this.outHot.set(a, (this.outHot.get(a) || 0) + v)
     }
     this.prunePositions()
   }

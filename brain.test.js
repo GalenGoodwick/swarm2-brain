@@ -486,4 +486,22 @@ function randVecSpace(nWords, dim, seed) {
   ok('failed searches change nothing', eye.Tassoc.size === failEdges)
 }
 
+// ── Gate 30: CURIOSITY — surprising transitions warm more; expected still warm; identity raw ──
+{
+  const g = mockProvider({ rok: [1, 0, 0], bin: [0.8, 0.5, 0], tam: [0.4, 0.9, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('rok bin')       // rok→bin becomes expected (below chunk threshold)
+  const beforeKnown = eye.Tseq.get('rok bin')
+  eye.absorb('rok bin')                                    // 3rd time: expected
+  const dKnown = eye.Tseq.get('rok bin') - beforeKnown * 0.98  // net of decay
+  eye.absorb('rok tam')                                    // novel fork from the same word
+  const dNovel = eye.Tseq.get('rok tam')
+  ok('a surprising transition warms much more than an expected one', dNovel > dKnown * 2.5)
+  ok('an expected transition still warms (no punishment, never zero)', dKnown > 0.2)
+  ok('identity layer stays raw (+1 co-occurrence, uncuriosified)', Math.abs((eye.Tassoc.get('rok tam') || 0) - 1) < 0.05)
+  // index consistency through forgetting
+  let sum = 0; for (const [k, v] of eye.Tseq) if (k.startsWith('rok ')) sum += v
+  ok('curiosity index tracks the voice layer through decay', Math.abs(sum - eye.outHot.get('rok')) < 1e-6)
+}
+
 console.log(`\n  ${passed} gates passed.`)
