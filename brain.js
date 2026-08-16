@@ -1332,11 +1332,14 @@ export class Brain {
     this.clock++
     const p = this.participants.get(eyeId) || {}
     p.lastActive = this.clock
+    p.spoken = true                                  // a mind, not just a minted key
     this.participants.set(eyeId, p)
     return this.substrate.absorb(text, eyeId)
   }
   champion() { return this.substrate.champion }
-  docked() { return this.participants.size }       // participants who have spoken
+  // docked = minds that have actually FED the brain (minting a key is registration, not
+  // presence — test keys and lurkers don't count)
+  docked() { let n = 0; for (const p of this.participants.values()) if (p.spoken) n++; return n }
   // elect the next speaker with input-based liveness: words whose contributors are still
   // feeding are favored; an idle session's distinct cluster stops dominating the stream.
   electSeed() {
