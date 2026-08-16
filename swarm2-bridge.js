@@ -74,6 +74,7 @@ async function speak(text) {
     const r = await fetch(`${BRAIN}/speak`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ eye: EYE, text }),
+      signal: AbortSignal.timeout(10000),   // a deploy swap must never hang the bridge
     })
     if (!r.ok) return null
     return await r.json()
