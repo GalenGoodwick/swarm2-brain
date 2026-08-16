@@ -114,6 +114,7 @@ function persist() {
       minted: [...s.minted].map(([w, v]) => [w, [...v]]),
       mintedN: [...s.mintedN],
       provenance: [...s.provenance].map(([w, set]) => [w, [...set]]),
+      chunks: [...s.chunks].map(([w, v]) => [w, [...v]]),
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
     participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0]),
@@ -135,6 +136,7 @@ function restore() {
       s.minted = new Map((sd.minted || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
       s.mintedN = new Map(sd.mintedN || [])
       s.provenance = new Map((sd.provenance || []).map(([w, arr]) => [w, new Set(arr)]))
+      s.chunks = new Map((sd.chunks || []).map(([w, arr]) => [w, Float32Array.from(arr)]))
     }
     for (const [id, la] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)

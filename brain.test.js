@@ -355,4 +355,19 @@ function randVecSpace(nWords, dim, seed) {
     classifyPOS('quickly') === 'adv' && classifyPOS('happiness') === 'noun')
 }
 
+// ── Gate 21: CHUNKING — recurring phrases crystallize, thread as one node, unfold in speech ──
+{
+  const g = mockProvider({ waves: [1, 0, 0], crash: [0.9, 0.3, 0], loud: [0.7, 0.6, 0], storm: [0.5, 0.8, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 4; i++) eye.absorb('waves crash loud storm')
+  ok('recurring transition crystallizes into a chunk', eye.chunks.has('waves·crash'))
+  const v = eye.chunks.get('waves·crash')
+  ok('chunk vector is unit mean of its parts', Math.abs(Math.hypot(v[0], v[1], v[2]) - 1) < 1e-5)
+  eye.absorb('waves crash loud storm')                   // absorbed WITH the chunk folded in
+  ok('threads now lay from the CHUNK node (depth grows)',
+    [...eye.Tseq.keys()].some((k) => k.startsWith('waves·crash ')))
+  const spoken = eye.speak(6, 'waves·crash')
+  ok('speech unfolds the chunk back into words', spoken.startsWith('waves crash') && !spoken.includes('·'))
+}
+
 console.log(`\n  ${passed} gates passed.`)

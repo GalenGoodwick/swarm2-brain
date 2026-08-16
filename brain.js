@@ -28,6 +28,12 @@ export const CELL_SIZE = 5
 export const CHAMP_TIERS = 4
 export const NUM_EVALUATORS = 5
 export const CAND_POOL = 25       // top candidates (by centrality) entering the tournament
+// CHUNKING — the depth lever. A transition that recurs hot enough CRYSTALLIZES into one
+// node (waves·crash); chunks thread like words, so a "trigram" of chunks spans many real
+// words — context depth grows by hierarchy (the cradle's chunkGraph, ported).
+export const CHUNK_HOT = 2.6      // T_seq heat at which a bigram crystallizes (~3 recurrences)
+export const CHUNK_MAX_WORDS = 3  // max real words inside one chunk
+export const CHUNK_CAP = 400      // bounded chunk lexicon
 export const MIN_CONTEXT = 3     // OOV needs >= this many known words to mint
 export const WALK_LEN = 12
 // HEBBIAN + JIGGLE SPRING (the fuller loop). Threads reshape the geometry the
@@ -122,6 +128,7 @@ export class Eye {
     this.minted = new Map()   // word -> Float32Array (unit) for OOV
     this.mintedN = new Map()  // word -> how many contexts it has been woven from (for refine)
     this.provenance = new Map() // word -> Set<eyeId> that contributed it (for consensus)
+    this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
@@ -146,10 +153,10 @@ export class Eye {
   }
 
   vecOf(w) {
-    return this.minted.get(w) || this.glove.vec(w)
+    return this.minted.get(w) || this.chunks.get(w) || this.glove.vec(w)
   }
   has(w) {
-    return this.minted.has(w) || this.glove.has(w)
+    return this.minted.has(w) || this.chunks.has(w) || this.glove.has(w)
   }
 
   // Resolve a sentence to an ordered list of words that HAVE a vector. New words (OOV) are
@@ -201,10 +208,17 @@ export class Eye {
   // Absorb one sentence: mint OOV, lay T_seq (consecutive) + T_assoc (windowed).
   absorb(text, eyeId = null) {
     this.tick++
-    const words = this._resolve(tokenizeContent(text))
-    if (eyeId) for (const w of words) {          // provenance: who contributed each word
+    const raw = this._resolve(tokenizeContent(text))
+    if (eyeId) for (const w of raw) {            // provenance: who contributed each word
       let s = this.provenance.get(w); if (!s) { s = new Set(); this.provenance.set(w, s) }
       s.add(eyeId)
+    }
+    // CHUNKIFY — greedily fold known crystallized phrases into single nodes, so the
+    // threads below are laid BETWEEN chunks: context depth grows by hierarchy.
+    const words = []
+    for (let i = 0; i < raw.length; i++) {
+      const two = i < raw.length - 1 ? raw[i] + '·' + raw[i + 1] : null
+      if (two && this.chunks.has(two)) { words.push(two); i++ } else words.push(raw[i])
     }
     for (let i = 0; i < words.length - 1; i++) {
       const a = words[i]
@@ -223,10 +237,36 @@ export class Eye {
         this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + 1 / (j - i))
       }
     }
+    this._crystallize()
     this.forget()
     this.champion = this.tournamentChampion()   // forward tournament = who I am
     this._centroid = null
     return { words, champion: this.champion }
+  }
+
+  // CRYSTALLIZE — a transition hot enough (recurred ~3+ times) becomes ONE node. Chunks
+  // may contain chunks (a·b + c → a·b·c) up to CHUNK_MAX_WORDS, so hierarchy compounds.
+  _crystallize() {
+    if (this.chunks.size >= CHUNK_CAP) return
+    for (const [k, hot] of this.Tseq) {
+      if (hot < CHUNK_HOT) continue
+      const [a, b] = unkey(k)
+      const ck = a + '·' + b
+      if (this.chunks.has(ck)) continue
+      if (ck.split('·').length > CHUNK_MAX_WORDS) continue
+      // chunk vector = unit mean of its constituent words' vectors
+      const parts = ck.split('·')
+      const v = new Float32Array(this.dim)
+      let ok = 0
+      for (const p of parts) { const pv = this.minted.get(p) || this.glove.vec(p); if (pv) { for (let d = 0; d < this.dim; d++) v[d] += pv[d]; ok++ } }
+      if (!ok) continue
+      let n = 0
+      for (let d = 0; d < this.dim; d++) { v[d] /= ok; n += v[d] * v[d] }
+      n = Math.sqrt(n) || 1
+      for (let d = 0; d < this.dim; d++) v[d] /= n
+      this.chunks.set(ck, v)
+      if (this.chunks.size >= CHUNK_CAP) break
+    }
   }
 
   // Decay every hot weight, then hard-cap each set at STATE_WINDOW (elimination =
@@ -530,7 +570,8 @@ export class Eye {
       out.push(next)
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
     }
-    return out.join(' ')
+    // unfold chunks back into their words when speaking
+    return out.map((w) => w.split('·').join(' ')).join(' ')
   }
 
   // one word-position tournament: candidates are the real successors; each is graded by
@@ -542,7 +583,10 @@ export class Eye {
     for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
     if (n) for (let i = 0; i < this.dim; i++) cvec[i] /= n
     const evals = this._pickEvaluators(NUM_EVALUATORS, cands.map((c) => c[0]), evalPool)
-    const pprev = prev ? classifyPOS(prev) : null
+    // chunk-aware POS: the boundary is last-word-of-prev → first-word-of-candidate
+    const lastOf = (w) => { const p = w.split('·'); return p[p.length - 1] }
+    const firstOf = (w) => w.split('·')[0]
+    const pprev = prev ? classifyPOS(lastOf(prev)) : null
     let best = null, bestS = -Infinity
     for (const [c, hot] of cands) {
       const cv = this.posOf(c); if (!cv) continue
@@ -553,7 +597,7 @@ export class Eye {
         agree += d
       }
       const fit = evals.length ? agree / evals.length : 0
-      const posBonus = pprev && POS_OK.has(pprev + ' ' + classifyPOS(c)) ? 0.4 : 0   // grammatical POS nudge
+      const posBonus = pprev && POS_OK.has(pprev + ' ' + classifyPOS(firstOf(c))) ? 0.4 : 0   // grammatical POS nudge
       // jitter: a small deterministic per-word wobble (hash of word × seed) so the walk
       // COMPOSES across warm paths instead of deterministically replaying the newest input
       let wob = 0
