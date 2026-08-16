@@ -60,6 +60,11 @@ export const FUNCTION_WORDS = new Set([
   'a', 'i', 'is', 'it', 'of', 'to', 'in', 'on', 'at', 'an', 'as', 'be', 'by', 'do',
   'or', 'no', 'so', 'we', 'he', 'me', 'my', 'us', 'up', 'am', 'if', 'off', 'our',
   'am', 'im', 'yes', 'get', 'got', 'now', 'new', 'way', 'too', 'own',
+  // contractions — grammar glue, never identity; they thread + speak but cannot reign
+  "i'll", "i'm", "i've", "i'd", "it's", "that's", "there's", "here's", "what's", "who's",
+  "he's", "she's", "we're", "we'll", "we've", "you're", "you'll", "you've", "they're",
+  "don't", "doesn't", "didn't", "can't", "won't", "isn't", "aren't", "wasn't", "weren't",
+  "couldn't", "wouldn't", "shouldn't", "haven't", "hasn't", "let's", "y'all",
 ])
 
 const key = (a, b) => a + ' ' + b
