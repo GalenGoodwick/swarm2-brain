@@ -1022,8 +1022,14 @@ export class Eye {
 
   collapseAround(seed, maxSize = 10) {
     if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
-    const { S, wTo } = this._growDense(seed, maxSize)
+    const { S } = this._growDense(seed, maxSize)
     if (S.size < 3) return { error: 'no dense subnetwork around seed' }
+    return this.collapseSet(seed, S)
+  }
+  // collapse an EXACT member set (used by both greedy growth and the spectral surveyor)
+  collapseSet(seed, S) {
+    if (this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
+    const wTo = (w, set) => { let s = 0; for (const m of set) s += (this.Tassoc.get(key(w, m)) || 0) + (this.Tassoc.get(key(m, w)) || 0) + (this.Tseq.get(key(w, m)) || 0) + (this.Tseq.get(key(m, w)) || 0); return s }
     const ent = '⟦' + seed + '⟧'
     // entity vector: warmth-weighted centroid of member positions
     const vec = new Float32Array(this.dim); let tw = 0
@@ -1071,6 +1077,61 @@ export class Eye {
   // candidate subnetwork is a FORMULA with a calculable worth (modularity × mass); the
   // candidates compete, and a collapse executes only when the champion's math clears the
   // bar. The brain folds itself — consolidation as a habit, not an instruction.
+  // THE UNIVERSAL FORMULA — Newman's spectral method: the fold-lines of a graph are the
+  // sign-structure of the leading eigenvector of the modularity operator B = A − kkᵀ/2m.
+  // (The exact optimum is NP-hard; the spectrum is the universal closed-form direction.)
+  // Note the rhyme: the tournament's centrality is a power iteration too — the champion
+  // is eigenvector 1 (the hub/identity); the COMMUNITIES live in what remains. One
+  // spectrum: the crown at the top, the folds beneath it.
+  spectralSurvey(maxSize = 10) {
+    // sparse symmetric adjacency over active words
+    const idx = new Map(), words = []
+    const wOf = (w) => { let i = idx.get(w); if (i === undefined) { i = words.length; idx.set(w, i); words.push(w) } return i }
+    const edges = []
+    for (const m of [this.Tassoc, this.Tseq]) for (const [k, v] of m) {
+      const [a, b] = unkey(k)
+      if (b === END || FUNCTION_WORDS.has(a) || FUNCTION_WORDS.has(b) || a.startsWith('⟦') || b.startsWith('⟦')) continue
+      edges.push([wOf(a), wOf(b), v])
+    }
+    const n = words.length
+    if (n < 12) return null
+    const deg = new Float64Array(n); let m2 = 0
+    for (const [a, b, v] of edges) { deg[a] += v; deg[b] += v; m2 += 2 * v }
+    // power iteration on B x = A x − k (kᵀx)/2m   (deterministic seed)
+    let x = new Float64Array(n)
+    for (let i = 0; i < n; i++) x[i] = Math.sin(i * 1.7 + 1)
+    for (let it = 0; it < 60; it++) {
+      const ax = new Float64Array(n)
+      for (const [a, b, v] of edges) { ax[a] += v * x[b]; ax[b] += v * x[a] }
+      let kx = 0
+      for (let i = 0; i < n; i++) kx += deg[i] * x[i]
+      kx /= m2
+      let norm = 0
+      for (let i = 0; i < n; i++) { ax[i] -= deg[i] * kx; norm += ax[i] * ax[i] }
+      norm = Math.sqrt(norm) || 1
+      for (let i = 0; i < n; i++) x[i] = ax[i] / norm
+    }
+    // candidate community: the strongest-signed side, top |component| words
+    const pick = (sign) => [...words.keys()]
+      .filter((i) => sign * x[i] > 0)
+      .sort((a, b) => Math.abs(x[b]) - Math.abs(x[a]))
+      .slice(0, maxSize).map((i) => words[i])
+    let best = null
+    for (const sign of [1, -1]) {
+      const cand = pick(sign)
+      if (cand.length < 4) continue
+      const S = new Set(cand)
+      let win = 0, wb = 0
+      for (const [a, b, v] of edges) {
+        const ain = S.has(words[a]), bin = S.has(words[b])
+        if (ain && bin) win += v; else if (ain || bin) wb += v
+      }
+      const mod = win / (win + wb + 1e-9)
+      if (!best || mod > best.modularity) best = { S, seed: cand[0], modularity: mod }
+    }
+    return best
+  }
+
   autoConsolidate(maxEntities = 60, minModularity = 0.5) {
     if (this.entities.size >= maxEntities) return null
     const ranked = [...this.tournamentScores().entries()]
@@ -1082,19 +1143,22 @@ export class Eye {
     const K = Math.min(20, ranked.length)
     const seeds = []
     for (let i = 0; i < K; i++) seeds.push(ranked[Math.floor((i * ranked.length) / K)])
-    let best = null
+    // the UNIVERSAL FORMULA first: spectral fold-lines (eigenvector of the modularity
+    // operator). Greedy growth is the fallback surveyor.
+    const spec = this.spectralSurvey(10)
+    let best = null, method = null
+    if (spec && spec.S.size >= 4) { best = { seed: spec.seed, S: spec.S, modularity: spec.modularity }; method = 'spectral' }
     for (const seed of seeds) {
       const g = this._growDense(seed, 10)
       if (g.S.size < 4) continue
-      const worth = g.modularity * Math.log(1 + g.win)   // the formula: cohesion × mass
-      if (!best || worth > best.worth) best = { seed, worth, modularity: g.modularity }
+      if (!best || g.modularity > best.modularity) { best = { seed, S: g.S, modularity: g.modularity }; method = 'greedy' }
     }
     // the refusal is legible too: every survey records its best candidate's math
-    this.lastSurvey = best ? { seed: best.seed, modularity: +best.modularity.toFixed(2), bar: minModularity } : { none: true }
+    this.lastSurvey = best ? { seed: best.seed, method, modularity: +best.modularity.toFixed(2), bar: minModularity } : { none: true }
     if (!best || best.modularity < minModularity) return null   // the math must clear the bar
-    const r = this.collapseAround(best.seed, 10)
+    const r = this.collapseSet(best.seed, best.S)
     if (r.error) return null
-    return { ...r, modularity: +best.modularity.toFixed(2), worth: +best.worth.toFixed(2) }
+    return { ...r, method, modularity: +best.modularity.toFixed(2) }
   }
 
   // CARTRIDGE — the brain's state condensed to a legible, ALTERABLE formula (the

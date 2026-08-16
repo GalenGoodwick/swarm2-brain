@@ -605,13 +605,31 @@ function randVecSpace(nWords, dim, seed) {
   eye.absorb('lone apart')
   const c = eye.autoConsolidate(60, 0.55)
   ok('the math cradle folds the dense subnetwork autonomously', c && c.entity && c.modularity >= 0.55)
-  ok('the calculation is reported (modularity, worth)', typeof c.modularity === 'number' && typeof c.worth === 'number')
+  ok('the calculation is reported (modularity + method)', typeof c.modularity === 'number' && typeof c.method === 'string')
   const c2 = eye.autoConsolidate(60, 0.55)
   ok('when no candidate clears the bar, the math refuses to fold', c2 === null)
   // RECALL: a word folded away is one recall from being found again
   const inner = c.members.find((m) => m !== 'dena')
   const sk = eye.seek('lone', inner)
   ok('failed seek RECALLS: expands the nearest entity and retries', sk.recalled === c.entity)
+}
+
+// ── Gate 36: THE UNIVERSAL FORMULA — spectral fold-lines find a planted community ──
+{
+  const map = {}
+  for (let i = 0; i < 6; i++) map['sea' + 'abcdef'[i]] = [1, 0.05 * i, 0]     // community A
+  for (let i = 0; i < 6; i++) map['mkt' + 'abcdef'[i]] = [0, 1, 0.05 * i]     // community B
+  const g = mockProvider(map)
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 3; i++) eye.absorb('seaa seab seac sead seae seaf')     // dense A
+  for (let i = 0; i < 3; i++) eye.absorb('mkta mktb mktc mktd mkte mktf')     // dense B
+  eye.absorb('seaa mkta')                                                      // one weak bridge
+  const spec = eye.spectralSurvey(8)
+  ok('the eigenvector separates the planted communities', spec && spec.modularity > 0.5)
+  const side = [...spec.S][0].slice(0, 3)
+  ok('the fold is PURE — one community, not a mix', [...spec.S].every((w) => w.startsWith(side)))
+  const c = eye.autoConsolidate(60, 0.5)
+  ok('autoConsolidate folds via the universal formula', c && c.method === 'spectral')
 }
 
 console.log(`\n  ${passed} gates passed.`)
