@@ -941,7 +941,10 @@ export class Eye {
       frontier.sort((a, b) => b.s - a.s)
       const node = frontier.shift()
       expanded++
-      if (node.w === to || node.w.split('·').includes(to)) {
+      // arrival = the word itself, a chunk containing it, OR a FOLD whose members include
+      // it — reaching the abstraction that holds the target IS reaching the target
+      const inFold = node.w.startsWith('⟦') && (this.entities.get(node.w)?.members || []).includes(to)
+      if (node.w === to || node.w.split('·').includes(to) || inFold) {
         this._reinforcePath(node.path)                 // inference threading (see below)
         const claim = this._registerClaim(node.path)   // a found path is an OPEN CLAIM
         return { from, to, found: true, steps: node.path.length - 1, expanded, path: node.path, claim: claim.id }

@@ -623,7 +623,8 @@ function randVecSpace(nWords, dim, seed) {
   // RECALL: a word folded away is one recall from being found again
   const inner = c.members.find((m) => m !== 'dena')
   const sk = eye.seek('lone', inner)
-  ok('failed seek RECALLS: expands the nearest entity and retries', sk.recalled === c.entity)
+  ok('a folded-away word is still findable (arrival-at-fold or recall)',
+    sk.found ? sk.path[sk.path.length - 1] === c.entity || sk.path.includes(inner) : sk.recalled === c.entity)
 }
 
 // ── Gate 36: THE UNIVERSAL FORMULA — spectral fold-lines find a planted community ──
