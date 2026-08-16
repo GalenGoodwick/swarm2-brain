@@ -192,9 +192,10 @@ setInterval(() => {
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champTurn: !!champTurn, champion: s.champion, docked: dockedCount() })
-    // THE MATH CRADLE — every ~40 ticks the brain explores its own collapse-space and
-    // folds the subnetwork whose math clears the bar (consolidation as a habit)
-    if (tickN % 40 === 0) {
+    // THE MATH CRADLE — autonomous folding is OFF by default (Aug 16 ablation: folding
+    // measurably costs voice quality — vocab 83→67, len 13.1→11.7. Folding remains a
+    // MANUAL readability/memory tool via /collapse; set AUTO_FOLD=1 to re-enable).
+    if (process.env.AUTO_FOLD === '1' && tickN % 40 === 0) {
       const c = s.autoConsolidate()
       if (c) broadcast({ t: Date.now(), consolidated: c.entity, members: c.members, modularity: c.modularity, docked: dockedCount() })
     }
