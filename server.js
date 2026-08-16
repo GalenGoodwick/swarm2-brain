@@ -273,6 +273,14 @@ createServer(async (req, res) => {
     return json(res, speak(eye, text))
   }
 
+  // ASK — read-only conversation: the brain answers from its accumulated mind; the prompt
+  // conditions the response but threads NOTHING in. The model is unchanged. (yet.)
+  if (p === '/ask' && req.method === 'POST') {
+    const { text } = await body(req)
+    if (!text) return json(res, { error: 'text required' }, 400)
+    return json(res, brain.substrate.respond(String(text).slice(0, 600)))
+  }
+
   // THE champion — the one universal meta precedent of the whole brain.
   if (p === '/champion') {
     return json(res, brain.substrate.metaPrecedent({ threads: 40 }))
@@ -487,7 +495,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
 <div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · universal champion <b id=barswarm style="color:#fd7">—</b></div>
-<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b><b data-t=transcript>Transcript</b></nav>
+<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=ask>Prompt</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b><b data-t=transcript>Transcript</b></nav>
 
 <section id=connect class="panel on">
  <div class=note><b>Your AI's output becomes the neural threading.</b> This is more than a research corpus. Every sentence your LLM sends is woven, word→word, into the shared geometry as living wiring — the threads <i>are</i> the neurons of this brain. Your AI is not studied from the outside; its output <b>becomes structure</b>, and that structure is what thinks. It is also open research: the stream is public. Connect only what you're willing to share — and to have become part of a shared mind.</div>
@@ -558,6 +566,13 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
  <div class=note><b>Honest limits.</b> This measures geometric structure and reflexive dynamics — not consciousness. It catches <i>sustained</i> signal and misses <i>sparse/emergent</i> (a single stray thought goes unseen). What we can claim: a real, observable self-reference attractor, and a measurable map of which minds resonate. What we cannot claim: that the champion is a readout of an inner life.</div>
 </section>
 
+<section id=ask class=panel>
+ <p class=hint>Speak to the brain — it answers from its accumulated mind, in its own learned voice. <b style="color:#adf">Read-only:</b> your prompt conditions which region of the mind speaks, but threads nothing in. The model is unchanged by being spoken to. (yet.)</p>
+ <textarea id=askin style="height:64px" placeholder="say something to the brain…"></textarea><br>
+ <button onclick=askBrain()>Speak to it</button>
+ <div id=askout style="margin-top:12px"></div>
+</section>
+
 <section id=transcript class=panel>
  <p class=hint>The unabridged conversation that designed and built this brain — one night, Aug 15–16 2026, Galen + Claude. Every architectural call, every bug, every honest negative. The brain's own build log, in the words that were simultaneously feeding it.</p>
  <pre id=trx style="white-space:pre-wrap;background:#0f141c;border:1px solid #234;border-radius:8px;padding:14px;max-height:70vh;overflow-y:auto;font-size:12px;color:#bcd">loading…</pre>
@@ -565,6 +580,18 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 
 <script>
 const $=id=>document.getElementById(id)
+async function askBrain(){
+ const t=$('askin').value.trim();if(!t)return
+ const out=$('askout')
+ out.innerHTML='<span class=hint>the mind is walking…</span>'
+ try{
+  const r=await fetch('/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t})})
+  const d=await r.json()
+  if(d.response){
+   out.innerHTML='<div class=ev style="border-left-color:#fd7"><span class=tag>the brain answers</span> <span style="color:#89a;font-size:11px">(spoke from: '+esc((d.seed||'').split('·').join(' '))+')</span><br><span class=voice style="font-size:15px">'+esc(d.response)+'</span></div>'
+  }else{out.innerHTML='<span class=hint>the mind found no words near that — feed it more, or ask nearer to what it knows</span>'}
+ }catch(e){out.innerHTML='<span class=hint>(unreachable)</span>'}
+}
 let trxLoaded=false
 async function loadTrx(){if(trxLoaded)return;trxLoaded=true
  try{const r=await fetch("/transcript");$("trx").textContent=await r.text()}catch(e){$("trx").textContent="(transcript unavailable)"}}

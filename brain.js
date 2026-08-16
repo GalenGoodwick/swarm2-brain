@@ -729,6 +729,38 @@ export class Eye {
     return best || cands[0][0]
   }
 
+  // RESPOND — read-only conversation: the prompt CONDITIONS which region of the mind
+  // speaks (nearest seeds to the prompt's meaning), candidate walks compete for relevance,
+  // and NOTHING threads in — the model is unchanged by being spoken to. Inference only.
+  respond(text, len = 16) {
+    const pw = tokenizeContent(text).filter((w) => !FUNCTION_WORDS.has(w))
+    const qv = new Float32Array(this.dim)
+    let k = 0
+    for (const w of pw) { const v = this.vecOf(w); if (v) { for (let i = 0; i < this.dim; i++) qv[i] += v[i]; k++ } }
+    if (k) { let n = 0; for (let i = 0; i < this.dim; i++) n += qv[i] * qv[i]; n = Math.sqrt(n) || 1; for (let i = 0; i < this.dim; i++) qv[i] /= n }
+    const scores = this.tournamentScores()
+    const rel = (w) => { if (!k) return 0; const v = this.posOf(w); if (!v) return 0; let d = 0; for (let i = 0; i < this.dim; i++) d += v[i] * qv[i]; return d }
+    // seeds: prompt words present in the field first, then the field's nearest concepts
+    const inField = pw.filter((w) => scores.has(w))
+    const nearest = [...scores.entries()].filter(([w]) => !FUNCTION_WORDS.has(w))
+      .map(([w, s]) => [w, rel(w) + 0.1 * Math.log(1 + Math.max(0, s))])
+      .sort((a, b) => b[1] - a[1]).slice(0, 4).map((x) => x[0])
+    const seeds = [...new Set([...inField.slice(0, 2), ...nearest])].slice(0, 4)
+    if (!seeds.length && this.champion) seeds.push(this.champion)
+    // candidate walks compete: the most prompt-relevant utterance wins
+    let best = null, bestS = -Infinity
+    for (let i = 0; i < seeds.length; i++) {
+      const t = this.speak(len, seeds[i], 2 + i)
+      const ws = t.split(' ')
+      if (ws.length < 2) continue
+      let r = 0
+      for (const w of ws) r += rel(w)
+      const s = r / ws.length + 0.05 * ws.length
+      if (s > bestS) { bestS = s; best = { seed: seeds[i], response: t } }
+    }
+    return best || { seed: null, response: '' }
+  }
+
   // SHIFT (m28) — the champion DEFORMS the field. It pulls behaviourally-related words'
   // living positions toward it (champion execution / convergence) and pushes unrelated
   // words apart (the reverse-tournament EXPANSION that keeps the field open and stops

@@ -666,4 +666,23 @@ function randVecSpace(nWords, dim, seed) {
   ok('an opened fold resumes LIVE learning (write-through stops)', e.delta.size === 0)
 }
 
+// ── Gate 38: RESPOND — read-only conversation: relevant answer, zero model mutation ──
+{
+  const g = mockProvider({
+    sea: [1, 0, 0], waves: [0.95, 0.3, 0], boat: [0.9, 0.4, 0], harbor: [0.85, 0.3, 0.2],
+    bread: [0, 1, 0], market: [0.1, 0.95, 0], coins: [0, 0.9, 0.3],
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('sea waves boat harbor')
+  for (let i = 0; i < 2; i++) eye.absorb('bread market coins')
+  const before = JSON.stringify([eye.Tseq.size, eye.Tassoc.size, eye.Tseq2.size, eye.tick, eye.minted.size])
+  const r = eye.respond('tell me about the sea and the waves')
+  ok('the brain answers', r.response.split(' ').length >= 2)
+  ok('the answer comes from the PROMPT-relevant region (sea, not market)', /sea|waves|boat|harbor/.test(r.response) && !/bread|market|coins/.test(r.response))
+  const after = JSON.stringify([eye.Tseq.size, eye.Tassoc.size, eye.Tseq2.size, eye.tick, eye.minted.size])
+  ok('responding mutates NOTHING (read-only inference)', before === after)
+  const r2 = eye.respond('bread and coins at the market')
+  ok('a different prompt speaks a different region', /bread|market|coins/.test(r2.response))
+}
+
 console.log(`\n  ${passed} gates passed.`)
