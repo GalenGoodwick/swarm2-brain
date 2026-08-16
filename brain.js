@@ -151,6 +151,7 @@ export class Eye {
     this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.outHot = new Map()     // word -> total outgoing T_seq heat (for curiosity)
+    this.entities = new Map()   // ⟦x⟧ -> {cartridge, members, vec} — collapsed subnetworks
     this.claims = []            // open claims: found paths awaiting swarm verification
     this.claimSeq = 0
     this.groundedEdges = new Set() // verified-thread keys — the long-term store (decay floor)
@@ -178,10 +179,11 @@ export class Eye {
   }
 
   vecOf(w) {
-    return this.minted.get(w) || this.chunks.get(w) || this.glove.vec(w)
+    const e = this.entities.get(w)
+    return (e && e.vec) || this.minted.get(w) || this.chunks.get(w) || this.glove.vec(w)
   }
   has(w) {
-    return this.minted.has(w) || this.chunks.has(w) || this.glove.has(w)
+    return this.entities.has(w) || this.minted.has(w) || this.chunks.has(w) || this.glove.has(w)
   }
 
   // Resolve a sentence to an ordered list of words that HAVE a vector. New words (OOV) are
@@ -670,8 +672,8 @@ export class Eye {
       out.push(next)
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
     }
-    // unfold chunks back into their words when speaking
-    return out.map((w) => w.split('·').join(' ')).join(' ')
+    // unfold chunks (·) and entities (⟦⟧) back into words when speaking
+    return out.map((w) => w.replace(/[⟦⟧]/g, '').split('·').join(' ')).join(' ')
   }
 
   // one word-position tournament: candidates are the real successors; each is graded by
@@ -965,6 +967,69 @@ export class Eye {
       else if (this.Tassoc.has(kr)) this.Tassoc.set(kr, this.Tassoc.get(kr) + 0.5)
       else this.Tassoc.set(k, 0.5)
     }
+  }
+
+  // COLLAPSE — the quotient-graph operator (depth training). A dense subnetwork S becomes
+  // ONE neuron entity ⟦x⟧ with BOUNDARY CONSERVATION: every input edge into S converges
+  // onto the entity, every output edge out of S converges from it — walks still route.
+  // The internals are zipped into the entity's cartridge (expandable, nothing lost).
+  // The entity has a vector, so it warms, decays, threads, and competes like any neuron.
+  // Applied recursively, this grows a hierarchy of abstraction — depth, legibly.
+  collapseAround(seed, maxSize = 10) {
+    if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
+    // adjacency once
+    const adj = new Map()
+    const addAdj = (a, b) => { let s = adj.get(a); if (!s) { s = new Set(); adj.set(a, s) } s.add(b) }
+    for (const m of [this.Tassoc, this.Tseq]) for (const k of m.keys()) { const [a, b] = unkey(k); if (b !== END) { addAdj(a, b); addAdj(b, a) } }
+    const wTo = (w, set) => { let s = 0; for (const m of set) s += (this.Tassoc.get(key(w, m)) || 0) + (this.Tassoc.get(key(m, w)) || 0) + (this.Tseq.get(key(w, m)) || 0) + (this.Tseq.get(key(m, w)) || 0); return s }
+    // greedy dense neighborhood: grow S by the word most warmly threaded into it
+    const S = new Set([seed])
+    while (S.size < maxSize) {
+      let best = null, bw = 0
+      for (const m of S) for (const n of adj.get(m) || []) {
+        if (S.has(n) || n === END || FUNCTION_WORDS.has(n) || this.entities.has(n)) continue
+        const w = wTo(n, S)
+        if (w > bw) { bw = w; best = n }
+      }
+      if (!best || bw < 0.5) break
+      S.add(best)
+    }
+    if (S.size < 3) return { error: 'no dense subnetwork around seed' }
+    const ent = '⟦' + seed + '⟧'
+    // entity vector: warmth-weighted centroid of member positions
+    const vec = new Float32Array(this.dim); let tw = 0
+    for (const m of S) { const v = this.posOf(m); if (!v) continue; const w = wTo(m, S) || 1; for (let d = 0; d < this.dim; d++) vec[d] += w * v[d]; tw += w }
+    let n = 0; for (let d = 0; d < this.dim; d++) { vec[d] /= (tw || 1); n += vec[d] * vec[d] }
+    n = Math.sqrt(n) || 1; for (let d = 0; d < this.dim; d++) vec[d] /= n
+    // partition edges: internal → cartridge; boundary → rerouted onto the entity (summed)
+    const lines = []
+    for (const [m, tag] of [[this.Tassoc, 'thread'], [this.Tseq, 'seq']]) {
+      for (const [k, v] of [...m.entries()]) {
+        const [a, b] = unkey(k)
+        const ain = S.has(a), bin = S.has(b)
+        if (!ain && !bin) continue
+        if (ain && bin) { lines.push(`${tag}: ${a} > ${b} : ${v.toFixed(2)}`); m.delete(k); continue }
+        // boundary conservation: inputs/outputs converge on the entity
+        const nk = ain ? key(ent, b) : key(a, ent)
+        m.set(nk, (m.get(nk) || 0) + v)
+        m.delete(k)
+      }
+    }
+    // provenance: the entity is carried by everyone who carried its members
+    const pset = new Set()
+    for (const m of S) for (const id of this.provenance.get(m) || []) pset.add(id)
+    if (pset.size) this.provenance.set(ent, pset)
+    this.entities.set(ent, { cartridge: lines.join('\n'), members: [...S], vec })
+    this._centroid = null
+    return { entity: ent, members: [...S], internalEdges: lines.length }
+  }
+  // EXPAND — unzip an entity's internals back into the live graph (additive). The entity
+  // node remains: both levels of the hierarchy coexist, and the abstraction keeps warming.
+  expandEntity(ent) {
+    const e = this.entities.get(ent)
+    if (!e) return { error: 'unknown entity' }
+    const r = this.unzipCartridge(e.cartridge)
+    return { entity: ent, restored: r }
   }
 
   // CARTRIDGE — the brain's state condensed to a legible, ALTERABLE formula (the

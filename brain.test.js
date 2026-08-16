@@ -565,4 +565,33 @@ function randVecSpace(nWords, dim, seed) {
   ok('unzip is additive, never destructive', a.Tassoc.get('sea boat') > before)
 }
 
+// ── Gate 34: COLLAPSE — a subnetwork becomes a neuron entity; I/O converges; expand restores ──
+{
+  const g = mockProvider({
+    core: [1, 0, 0], corea: [0.95, 0.3, 0], coreb: [0.9, 0.4, 0.1],   // dense cluster
+    outer: [0, 1, 0], sink: [0, 0.9, 0.4],                             // external I/O
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('core corea coreb core corea')  // dense internal threads
+  eye.absorb('outer core')                                               // input into the cluster
+  eye.absorb('coreb sink')                                               // output from the cluster
+  const inW = eye.Tassoc.get('outer core') || 0
+  const r = eye.collapseAround('core', 3)
+  ok('collapse creates a neuron entity from the dense subnetwork', r.entity === '⟦core⟧' && r.members.length === 3)
+  ok('internal threads are zipped out of the live graph', !eye.Tassoc.has('core corea'))
+  ok('INPUTS converge onto the entity (boundary conserved)', (eye.Tassoc.get('outer ⟦core⟧') || 0) >= inW)
+  ok('OUTPUTS converge from the entity', (eye.Tassoc.get('⟦core⟧ sink') || 0) > 0)
+  // the entity routes: seek passes THROUGH the collapsed network
+  const sk = eye.seek('outer', 'sink')
+  ok('seek routes through the entity', sk.found && sk.path.includes('⟦core⟧'))
+  // the entity warms/decays like any neuron
+  const w0 = eye.Tassoc.get('outer ⟦core⟧')
+  eye.forget()
+  ok('the entity decays like any neuron (it is one)', eye.Tassoc.get('outer ⟦core⟧') < w0)
+  // expand restores the internals, additively; the entity remains (hierarchy coexists)
+  const ex = eye.expandEntity('⟦core⟧')
+  ok('expand restores the zipped internals', ex.restored.threads > 0 && eye.Tassoc.has('core corea'))
+  ok('the abstraction persists after expansion (both levels live)', eye.entities.has('⟦core⟧'))
+}
+
 console.log(`\n  ${passed} gates passed.`)

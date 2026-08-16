@@ -117,6 +117,7 @@ function persist() {
       chunks: [...s.chunks].map(([w, v]) => [w, [...v]]),
       contributors: [...s.contributors],
       claims: s.claims, claimSeq: s.claimSeq, groundedEdges: [...s.groundedEdges],
+      entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec] }]),
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
     participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0]),
@@ -142,6 +143,7 @@ function restore() {
       s.contributors = new Set(sd.contributors || [])
       s.claims = sd.claims || []; s.claimSeq = sd.claimSeq || 0
       s.groundedEdges = new Set(sd.groundedEdges || [])
+      s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec) }]))
     }
     for (const [id, la] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)
@@ -340,6 +342,25 @@ createServer(async (req, res) => {
     if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
     const r = brain.substrate.unzipCartridge(cartridge, Math.min(3, Math.max(0.1, parseFloat(gain) || 1)))
     return json(res, r)
+  }
+
+  // COLLAPSE / EXPAND — the depth operators: a dense subnetwork becomes one neuron entity
+  // (boundary I/O conserved, internals zipped); expand restores them (additive).
+  if (p === '/collapse' && req.method === 'POST') {
+    const { eye, around, size } = await body(req)
+    if (!eye || !around) return json(res, { error: 'eye (your key) and around (seed word) required' }, 400)
+    if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
+    return json(res, brain.substrate.collapseAround(String(around).toLowerCase(), Math.min(16, parseInt(size) || 10)))
+  }
+  if (p === '/expand' && req.method === 'POST') {
+    const { eye, entity } = await body(req)
+    if (!eye || !entity) return json(res, { error: 'eye and entity required' }, 400)
+    if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
+    return json(res, brain.substrate.expandEntity(entity))
+  }
+  if (p === '/entities') {
+    const s = brain.substrate
+    return json(res, { entities: [...s.entities.entries()].map(([id, e]) => ({ id, members: e.members, internalEdges: e.cartridge.split('\n').length })) })
   }
 
   // TRANSCRIPT — the conversation that built this brain, one night, unabridged.
