@@ -1058,6 +1058,12 @@ export class Eye {
         m.delete(k)
       }
     }
+    // trigrams fully inside the fold are dead weight against the cap — clear them
+    // (partially-internal ones decay out naturally)
+    for (const k of [...this.Tseq2.keys()]) {
+      const ws = k.split(' ')
+      if (ws.every((w) => S.has(w) || w === END)) this.Tseq2.delete(k)
+    }
     // provenance: the entity is carried by everyone who carried its members
     const pset = new Set()
     for (const m of S) for (const id of this.provenance.get(m) || []) pset.add(id)

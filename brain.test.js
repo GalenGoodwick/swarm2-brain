@@ -594,6 +594,18 @@ function randVecSpace(nWords, dim, seed) {
   ok('the abstraction persists after expansion (both levels live)', eye.entities.has('⟦core⟧'))
 }
 
+// ── Gate 34b: a fold FREES the cap — live maps shrink, trigram debris cleared ──
+{
+  const g = mockProvider({ fa: [1, 0, 0], fb: [0.95, 0.3, 0], fc: [0.9, 0.4, 0.1], fd: [0.85, 0.35, 0.2] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('fa fb fc fd')
+  const before = eye.Tassoc.size + eye.Tseq.size + eye.Tseq2.size
+  eye.collapseAround('fa', 4)
+  const after = eye.Tassoc.size + eye.Tseq.size + eye.Tseq2.size
+  ok('a fold reduces the live thread count (cap space freed)', after < before)
+  ok('no fully-internal trigram debris survives the fold', ![...eye.Tseq2.keys()].some((k) => k.split(' ').every((w) => eye.entities.get('⟦fa⟧').members.includes(w) || w === '⏹')))
+}
+
 // ── Gate 35: THE MATH CRADLE — autonomous collapse when the math clears the bar; recall ──
 {
   const map = {}
