@@ -170,13 +170,16 @@ setInterval(() => {
     s.liveTick()                      // tournament crowns the universal champion; field deforms
     if (tickN % 2 !== 0) return       // speak every other tick — slower stream
     if (!s.Tseq.size) return
-    const seed = s.seedTournament()   // who speaks next is ELECTED (frontier + fatigue —
-    if (!seed) return                  // structurally anti-recency), not sampled
-    const text = s.speak(16, seed, 1 + (++rot % 7))   // jitter → walks compose across the map;
+    // who speaks next is ELECTED (frontier × liveness); every 4th thought the CHAMPION
+    // itself speaks — the identity has a voice, not just a title
+    const champTurn = (++rot % 4 === 0) && s.champion
+    const seed = champTurn ? s.champion : brain.electSeed()
+    if (!seed) return
+    const text = s.speak(16, seed, 1 + (rot % 7))     // jitter → walks compose across the map;
                                                        // 16 is a backstop — landing is ELECTED (END)
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
-    broadcast({ t: Date.now(), thought: text, seed, champion: s.champion, docked: dockedCount() })
+    broadcast({ t: Date.now(), thought: text, seed, champTurn: !!champTurn, champion: s.champion, docked: dockedCount() })
   } catch (e) { console.error('tick error:', e?.message) }
 }, 2200)
 
@@ -493,7 +496,9 @@ es.onmessage=e=>{const d=JSON.parse(e.data)
  if(d.docked!==undefined)$('docked').textContent=d.docked
  if(d.champion!==undefined){sw.textContent='champion: '+d.champion;const bs=$('barswarm');if(bs)bs.textContent=d.champion}
  const el=document.createElement('div')
- if(d.thought!==undefined){el.className='ev think';el.innerHTML='<span class=tag>the brain thinks</span> from <span class=seed>'+d.seed+'</span><br><span class=thought>'+d.thought+'</span>'}
+ if(d.thought!==undefined){el.className='ev think'
+  const tag=d.champTurn?'<span class=tag style="color:#fd7">the champion speaks</span>':'<span class=tag>the brain thinks</span>'
+  el.innerHTML=tag+' from <span class=seed>'+d.seed.split("·").join(" ")+'</span><br><span class=thought>'+d.thought+'</span>'}
  else if(d.voice!==undefined){el.className='ev spoke';el.innerHTML='<span class=tag>fed by</span> <span class=eye>'+(d.by||'')+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}
  else return
  log.prepend(el);while(log.children.length>50)log.lastChild.remove()}

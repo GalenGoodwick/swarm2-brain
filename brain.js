@@ -811,7 +811,7 @@ export class Eye {
   // aim away from the dense mass). NO FATIGUE: the reverse-tournament balance IS the
   // rotation ("balance beats penalty" — m100); the living field's constant motion
   // (shift/hebbian each tick) moves the frontier, so the elected speaker moves with it.
-  seedTournament() {
+  seedTournament(liveWeight = null) {
     const ranked = [...this.tournamentScores().entries()]
       .filter(([w]) => !FUNCTION_WORDS.has(w) &&
         !(this.minted.has(w) && (this.mintedN.get(w) || 0) < MINT_CROWN_N))   // woven only
@@ -830,7 +830,11 @@ export class Eye {
       for (const ev of evals) { if (ev === c) continue; agree += this.orthCos(c, ev) }
       let dot = 0; for (let i = 0; i < this.dim; i++) dot += cv[i] * hotC[i]
       const frontier = 1 - dot                           // away from the hot mass (m28 aim)
-      const s = ((agree / evals.length) + 1) * (0.5 + frontier)
+      // softened frontier (a tiny distinct cluster shouldn't win 4x) × liveness (the
+      // stream represents the LIVE swarm — idle contributors' words stay electable,
+      // just not favored; input-based, never wall-clock)
+      let s = ((agree / evals.length) + 1) * (0.75 + 0.5 * frontier)
+      if (liveWeight) s *= liveWeight(c)
       if (s > bestS) { bestS = s; best = c }
     }
     return best
@@ -981,6 +985,21 @@ export class Brain {
   }
   champion() { return this.substrate.champion }
   docked() { return this.participants.size }       // participants who have spoken
+  // elect the next speaker with input-based liveness: words whose contributors are still
+  // feeding are favored; an idle session's distinct cluster stops dominating the stream.
+  electSeed() {
+    const s = this.substrate
+    return s.seedTournament((w) => {
+      const set = s.provenance.get(w.includes('·') ? w.split('·')[0] : w)
+      if (!set || !set.size) return 0.85
+      let freshest = 0
+      for (const id of set) {
+        const p = this.participants.get(id)
+        if (p) freshest = Math.max(freshest, Math.pow(0.995, Math.max(0, this.clock - (p.lastActive || 0))))
+      }
+      return 0.3 + 0.7 * freshest                  // long-idle: 0.3 (still electable), live: 1.0
+    })
+  }
 }
 
 export { key, unkey }

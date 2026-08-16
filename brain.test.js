@@ -504,4 +504,20 @@ function randVecSpace(nWords, dim, seed) {
   ok('curiosity index tracks the voice layer through decay', Math.abs(sum - eye.outHot.get('rok')) < 1e-6)
 }
 
+// ── Gate 31: liveness — an idle session's distinct cluster stops dominating the stream ──
+{
+  const map = {}
+  for (let i = 0; i < 5; i++) map['pent' + 'abcde'[i]] = [0, 1, 0.1 * i]      // distinct idle cluster
+  for (let i = 0; i < 5; i++) map['dev' + 'abcde'[i]] = [1, 0.05 * i, 0]      // live feeder's cluster
+  const g = mockProvider(map)
+  const brain = new Brain(g)
+  brain.speak('idle-session', 'penta pentb pentc pentd pente')   // spoke once, went quiet
+  for (let i = 0; i < 250; i++) brain.speak('live-session', 'deva devb devc devd deve')
+  const picks = new Set()
+  for (let t = 0; t < 8; t++) { brain.substrate.liveTick(); const e = brain.electSeed(); if (e) picks.add(e) }
+  const idleShare = [...picks].filter((w) => w.startsWith('pent')).length / picks.size
+  ok('liveness keeps the idle distinct cluster from dominating the mic', idleShare <= 0.5)
+  ok('but the idle material remains in the identity (threads intact)', [...brain.substrate.Tassoc.keys()].some((k) => k.includes('pent')))
+}
+
 console.log(`\n  ${passed} gates passed.`)
