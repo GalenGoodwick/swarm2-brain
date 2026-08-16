@@ -715,6 +715,36 @@ export class Eye {
     }
     return seeds
   }
+
+  // SEED TOURNAMENT — who speaks next is ELECTED, not sampled. Candidates: one per stratum
+  // of the ranked field (breadth guaranteed). Evaluators: drawn ACROSS the field, not
+  // hot-only. Score = field agreement × FRONTIER (distance from the hot centroid — m28's
+  // aim away from the dense mass). NO FATIGUE: the reverse-tournament balance IS the
+  // rotation ("balance beats penalty" — m100); the living field's constant motion
+  // (shift/hebbian each tick) moves the frontier, so the elected speaker moves with it.
+  seedTournament() {
+    const ranked = [...this.tournamentScores().entries()]
+      .filter(([w]) => !FUNCTION_WORDS.has(w))
+      .sort((a, b) => b[1] - a[1]).map((x) => x[0])
+    if (!ranked.length) return null
+    if (ranked.length <= 3) return ranked[0]
+    const K = Math.min(15, ranked.length), E = Math.min(9, ranked.length)
+    const cands = [], evals = []
+    for (let i = 0; i < K; i++) cands.push(ranked[Math.floor((i * ranked.length) / K)])
+    for (let i = 0; i < E; i++) evals.push(ranked[Math.floor(((i + 0.5) * ranked.length) / E)])
+    const hotC = this.centroid()
+    let best = null, bestS = -Infinity
+    for (const c of cands) {
+      const cv = this.posOf(c); if (!cv) continue
+      let agree = 0
+      for (const ev of evals) { if (ev === c) continue; agree += this.orthCos(c, ev) }
+      let dot = 0; for (let i = 0; i < this.dim; i++) dot += cv[i] * hotC[i]
+      const frontier = 1 - dot                           // away from the hot mass (m28 aim)
+      const s = ((agree / evals.length) + 1) * (0.5 + frontier)
+      if (s > bestS) { bestS = s; best = c }
+    }
+    return best
+  }
   // Decode the identity centroid to nearest active words (bounded scan over the eye's
   // own vocab — no ANN needed; full-vocab search arrives at rung 3).
   decodeCentroid(k = 6) {

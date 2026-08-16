@@ -168,11 +168,9 @@ setInterval(() => {
     s.liveTick()                      // tournament crowns the universal champion; field deforms
     if (tickN % 2 !== 0) return       // speak every other tick — slower stream
     if (!s.Tseq.size) return
-    const seeds = s.thoughtSeeds(12)
-    if (!seeds.length) return
-    const seed = seeds[(++rot) % seeds.length]
-    const text = s.speak(12, seed, 1 + (rot % 7))   // jitter varies per tick → walks compose
-                                                     // across the map, not replay the newest input
+    const seed = s.seedTournament()   // who speaks next is ELECTED (frontier + fatigue —
+    if (!seed) return                  // structurally anti-recency), not sampled
+    const text = s.speak(12, seed, 1 + (++rot % 7))   // jitter → walks compose across the map
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champion: s.champion, docked: dockedCount() })

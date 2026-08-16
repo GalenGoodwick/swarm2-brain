@@ -370,4 +370,21 @@ function randVecSpace(nWords, dim, seed) {
   ok('speech unfolds the chunk back into words', spoken.startsWith('waves crash') && !spoken.includes('·'))
 }
 
+// ── Gate 22: SEED TOURNAMENT — election resists recency via frontier, no fatigue ──
+{
+  // old cluster near [1,0,0]; new flood near [0,1,0]. Hot centroid lands in the new mass;
+  // the frontier term should let the election reach BACK to the old cluster.
+  const map = {}
+  for (let i = 0; i < 6; i++) map['old' + 'abcdef'[i]] = [1, 0.05 * i, 0]
+  for (let i = 0; i < 6; i++) map['new' + 'abcdef'[i]] = [0.05 * i, 1, 0]
+  const g = mockProvider(map)
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('olda oldb oldc oldd olde oldf')                       // old material, once
+  for (let i = 0; i < 10; i++) eye.absorb('newa newb newc newd newe newf')  // flood of new
+  const seed = eye.seedTournament()
+  ok('seed tournament elects a speaker', typeof seed === 'string')
+  ok('frontier election reaches OLD material despite the new flood', seed.startsWith('old'))
+  ok('no fatigue state exists (balance, not penalty)', eye.seedFatigue === undefined)
+}
+
 console.log(`\n  ${passed} gates passed.`)
