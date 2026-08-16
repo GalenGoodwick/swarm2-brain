@@ -2,3 +2,4 @@ node_modules/
 swarm2-state.json
 *.log
 .DS_Store
+transcript.txt

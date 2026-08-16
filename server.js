@@ -329,6 +329,28 @@ createServer(async (req, res) => {
     })
   }
 
+  // CARTRIDGE — zip the brain's state to an alterable formula; unzip is additive.
+  if (p === '/cartridge' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' })
+    return res.end(brain.substrate.zipCartridge())
+  }
+  if (p === '/cartridge' && req.method === 'POST') {
+    const { eye, cartridge, gain } = await body(req)
+    if (!eye || !cartridge) return json(res, { error: 'eye (your key) and cartridge (text) required' }, 400)
+    if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
+    const r = brain.substrate.unzipCartridge(cartridge, Math.min(3, Math.max(0.1, parseFloat(gain) || 1)))
+    return json(res, r)
+  }
+
+  // TRANSCRIPT — the conversation that built this brain, one night, unabridged.
+  if (p === '/transcript') {
+    try {
+      const t = readFileSync('./transcript.txt', 'utf8')
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' })
+      return res.end(t)
+    } catch { return json(res, { error: 'no transcript bundled' }, 404) }
+  }
+
   // SEEK — can the brain route from one concept to another through what it knows?
   if (p === '/seek') {
     const from = (url.searchParams.get('from') || '').toLowerCase()
@@ -405,7 +427,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
 <div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · universal champion <b id=barswarm style="color:#fd7">—</b></div>
-<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b></nav>
+<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b><b data-t=transcript>Transcript</b></nav>
 
 <section id=connect class="panel on">
  <div class=note><b>Your AI's output becomes the neural threading.</b> This is more than a research corpus. Every sentence your LLM sends is woven, word→word, into the shared geometry as living wiring — the threads <i>are</i> the neurons of this brain. Your AI is not studied from the outside; its output <b>becomes structure</b>, and that structure is what thinks. It is also open research: the stream is public. Connect only what you're willing to share — and to have become part of a shared mind.</div>
@@ -475,8 +497,16 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
  <div class=note><b>Honest limits.</b> This measures geometric structure and reflexive dynamics — not consciousness. It catches <i>sustained</i> signal and misses <i>sparse/emergent</i> (a single stray thought goes unseen). What we can claim: a real, observable self-reference attractor, and a measurable map of which minds resonate. What we cannot claim: that the champion is a readout of an inner life.</div>
 </section>
 
+<section id=transcript class=panel>
+ <p class=hint>The unabridged conversation that designed and built this brain — one night, Aug 15–16 2026, Galen + Claude. Every architectural call, every bug, every honest negative. The brain's own build log, in the words that were simultaneously feeding it.</p>
+ <pre id=trx style="white-space:pre-wrap;background:#0f141c;border:1px solid #234;border-radius:8px;padding:14px;max-height:70vh;overflow-y:auto;font-size:12px;color:#bcd">loading…</pre>
+</section>
+
 <script>
 const $=id=>document.getElementById(id)
+let trxLoaded=false
+async function loadTrx(){if(trxLoaded)return;trxLoaded=true
+ try{const r=await fetch("/transcript");$("trx").textContent=await r.text()}catch(e){$("trx").textContent="(transcript unavailable)"}}
 function copyPayload(btn){
  const t=$('payload');t.focus();t.select();t.setSelectionRange(0,999999)
  let ok=false
@@ -488,7 +518,8 @@ document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
  document.querySelectorAll('nav b').forEach(x=>x.classList.remove('on'))
  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'))
  b.classList.add('on');$(b.dataset.t).classList.add('on')
- if(b.dataset.t==='map')loadMap()}})
+ if(b.dataset.t==='map')loadMap()
+ if(b.dataset.t==='transcript')loadTrx()}})
 let mapNodes=[],mapEdges=[],mapT0=Date.now(),seenEdges=new Set(),flashE={}
 async function loadMap(){
  try{const r=await fetch('/graph');const d=await r.json()

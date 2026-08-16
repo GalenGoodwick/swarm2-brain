@@ -967,6 +967,55 @@ export class Eye {
     }
   }
 
+  // CARTRIDGE — the brain's state condensed to a legible, ALTERABLE formula (the
+  // cartridge.cafe move): weighted thread lines a human or AI can read, edit, zip,
+  // unzip. Unzipping is ADDITIVE absorption (gain-scaled, never destructive), so a
+  // cartridge can be loaded into any brain — including back into this one — and
+  // thought about. The champion is deliberately NOT restored: it must be re-earned
+  // by the tournament wherever the cartridge lands.
+  zipCartridge(nAssoc = 300, nSeq = 200) {
+    const top = (m, n) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
+    const lines = [
+      `# swarm2 cartridge — ${this.Tassoc.size} threads condensed, champion at zip: ${this.champion || '—'}`,
+      ...[...this.chunks.keys()].map((c) => `chunk: ${c}`),
+      ...[...this.groundedEdges].map((k) => `grounded: ${unkey(k).join(' > ')}`),
+      ...top(this.Tassoc, nAssoc).map(([k, v]) => `thread: ${unkey(k).join(' > ')} : ${v.toFixed(2)}`),
+      ...top(this.Tseq, nSeq).filter(([k]) => !k.endsWith(END)).map(([k, v]) => `seq: ${unkey(k).join(' > ')} : ${v.toFixed(2)}`),
+    ]
+    return lines.join('\n')
+  }
+  unzipCartridge(text, gain = 1) {
+    let threads = 0, chunks = 0, grounded = 0
+    for (const raw of String(text).split('\n')) {
+      const line = raw.trim()
+      if (!line || line.startsWith('#')) continue
+      const m = line.match(/^(thread|seq|chunk|grounded):\s*(.+)$/)
+      if (!m) continue
+      if (m[1] === 'chunk') {
+        const ck = m[2].trim()
+        if (!this.chunks.has(ck)) {
+          const parts = ck.split('·')
+          const v = new Float32Array(this.dim); let ok = 0
+          for (const p of parts) { const pv = this.vecOf(p); if (pv) { for (let d = 0; d < this.dim; d++) v[d] += pv[d]; ok++ } }
+          if (ok) { let n = 0; for (let d = 0; d < this.dim; d++) { v[d] /= ok; n += v[d] * v[d] } n = Math.sqrt(n) || 1; for (let d = 0; d < this.dim; d++) v[d] /= n; this.chunks.set(ck, v); chunks++ }
+        }
+        continue
+      }
+      const seg = m[2].split(':')
+      const words = seg[0].split('>').map((w) => w.trim()).filter(Boolean)
+      if (words.length !== 2) continue
+      const w = seg.length > 1 ? parseFloat(seg[1]) : 1
+      if (!isFinite(w) || w <= 0) continue
+      const k = key(words[0], words[1])
+      if (m[1] === 'grounded') { if (this.groundedEdges.size < GROUNDED_MAX) this.groundedEdges.add(k); this.Tassoc.set(k, Math.max(this.Tassoc.get(k) || 0, GROUND_FLOOR)); grounded++; continue }
+      const map = m[1] === 'seq' ? this.Tseq : this.Tassoc
+      map.set(k, (map.get(k) || 0) + w * gain)     // ADDITIVE — existing structure untouched
+      threads++
+    }
+    this._centroid = null
+    return { threads, chunks, grounded }
+  }
+
   // DRIFT — how far a word has UNTETHERED from its given location (GloVe or minted anchor).
   // 0 = still at anchor, 1 = orthogonal. This residual is the amount the word's MEANING has
   // moved inside this brain — the semantic-change signal. Mild untethering is the point.

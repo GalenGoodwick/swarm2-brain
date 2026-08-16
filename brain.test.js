@@ -544,4 +544,25 @@ function randVecSpace(nWords, dim, seed) {
   ok('the faulty route is NEVER touched (additive, non-destructive)', Math.abs(eye.Tassoc.get('aleph bay') - faultyBefore) < 1e-9)
 }
 
+// ── Gate 33: CARTRIDGE — zip to an alterable formula, unzip additively, edits respected ──
+{
+  const g = mockProvider({ sea: [1, 0, 0], boat: [0.8, 0.5, 0], wave: [0.5, 0.8, 0], dock: [0, 1, 0] })
+  const a = new Eye('a', g); a.basin = null
+  for (let i = 0; i < 3; i++) a.absorb('sea boat wave dock')
+  const zip = a.zipCartridge()
+  ok('cartridge is a legible formula (thread lines)', zip.includes('thread: ') && zip.includes(' > '))
+  const b = new Eye('b', g); b.basin = null
+  const r = b.unzipCartridge(zip)
+  ok('unzip restores threads into a fresh brain', r.threads > 4 && b.Tassoc.has('sea boat'))
+  // ALTERABLE: edit the formula by hand — the edit is respected
+  const altered = zip + '\nthread: dock > sea : 9.0'
+  const c = new Eye('c', g); c.basin = null
+  c.unzipCartridge(altered)
+  ok('a hand-added line in the formula is respected', (c.Tassoc.get('dock sea') || 0) >= 9)
+  // ADDITIVE: unzipping never reduces existing structure
+  const before = a.Tassoc.get('sea boat')
+  a.unzipCartridge(zip)
+  ok('unzip is additive, never destructive', a.Tassoc.get('sea boat') > before)
+}
+
 console.log(`\n  ${passed} gates passed.`)
