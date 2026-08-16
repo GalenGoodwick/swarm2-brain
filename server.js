@@ -185,6 +185,12 @@ setInterval(() => {
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champTurn: !!champTurn, champion: s.champion, docked: dockedCount() })
+    // THE MATH CRADLE — every ~40 ticks the brain explores its own collapse-space and
+    // folds the subnetwork whose math clears the bar (consolidation as a habit)
+    if (tickN % 40 === 0) {
+      const c = s.autoConsolidate()
+      if (c) broadcast({ t: Date.now(), consolidated: c.entity, members: c.members, modularity: c.modularity, docked: dockedCount() })
+    }
     // every 8th thought the brain poses its OWN question: seek from an elected concept to
     // the champion — a found path becomes an open claim for the swarm to verify
     if (rot % 8 === 0 && s.champion && seed !== s.champion) {
@@ -642,6 +648,8 @@ es.onmessage=e=>{const d=JSON.parse(e.data)
   el.innerHTML=tag+' from <span class=seed>'+d.seed.split("·").join(" ")+'</span><br><span class=thought>'+d.thought+'</span>'}
  else if(d.claimText!==undefined){el.className='ev';el.style.borderLeftColor='#a7d'
   el.innerHTML='<span class=tag style="color:#a7d">the brain claims</span> <span style="color:#89a;font-size:11px">('+d.claim+' — verify via /guide)</span><br><span class=thought>'+d.claimText+'</span>'}
+ else if(d.consolidated!==undefined){el.className='ev';el.style.borderLeftColor='#7af'
+  el.innerHTML='<span class=tag style="color:#7af">the brain folds</span> <span class=thought>'+d.consolidated+' = {'+(d.members||[]).join(", ")+'} · modularity '+d.modularity+' — click it on the Live Map to unzip</span>'}
  else if(d.groundedClaim!==undefined){el.className='ev';el.style.borderLeftColor='#7f7'
   el.innerHTML='<span class=tag style="color:#7f7">claim grounded</span> <span class=thought>'+d.groundedClaim+' — verified by two minds; its threads join the long-term store</span>'}
  else if(d.voice!==undefined){el.className='ev spoke';el.innerHTML='<span class=tag>fed by</span> <span class=eye>'+(d.by||'')+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}

@@ -882,7 +882,7 @@ export class Eye {
   // most primitive act of inference: connecting two ideas through what the brain
   // actually knows. Function words are excluded as hops (grammar glue, not concepts —
   // every idea is 2 hops from 'the', which would make all paths trivial).
-  seek(from, to, budget = 300) {
+  seek(from, to, budget = 300, _recalled = false) {
     const tv = this.posOf(to) || this.vecOf(to)
     if (!tv) return { from, to, found: false, path: [], reason: 'unknown target' }
     if (!this.has(from)) return { from, to, found: false, path: [], reason: 'unknown start' }
@@ -911,6 +911,22 @@ export class Eye {
         if (seen.has(c) || isFn(c)) continue
         seen.add(c)
         frontier.push({ w: c, path: [...node.path, c], s: Math.log(1 + hot) * (1 + pull(c)) })
+      }
+    }
+    // RECALL — a failed seek pages memory in: expand the entity nearest the target and
+    // retry once. Folded knowledge is never lost to search; it is one recall away.
+    if (!_recalled && this.entities.size) {
+      let bestE = null, bc = 0.25
+      for (const [id, e] of this.entities) {
+        let d = 0
+        for (let i = 0; i < this.dim; i++) d += e.vec[i] * tv[i]
+        if (d > bc || e.members.includes(to)) { bc = e.members.includes(to) ? 2 : d; bestE = id }
+      }
+      if (bestE) {
+        this.expandEntity(bestE)
+        const r = this.seek(from, to, budget, true)
+        r.recalled = bestE
+        return r
       }
     }
     return { from, to, found: false, expanded, path: [] }
@@ -975,14 +991,14 @@ export class Eye {
   // The internals are zipped into the entity's cartridge (expandable, nothing lost).
   // The entity has a vector, so it warms, decays, threads, and competes like any neuron.
   // Applied recursively, this grows a hierarchy of abstraction — depth, legibly.
-  collapseAround(seed, maxSize = 10) {
-    if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
-    // adjacency once
+  // grow the dense neighborhood around a seed (dry-run capable) and CALCULATE its math:
+  // internal mass w_in, boundary mass w_b, modularity = w_in/(w_in+w_b). The formula a
+  // candidate collapse is judged by.
+  _growDense(seed, maxSize = 10) {
     const adj = new Map()
     const addAdj = (a, b) => { let s = adj.get(a); if (!s) { s = new Set(); adj.set(a, s) } s.add(b) }
     for (const m of [this.Tassoc, this.Tseq]) for (const k of m.keys()) { const [a, b] = unkey(k); if (b !== END) { addAdj(a, b); addAdj(b, a) } }
     const wTo = (w, set) => { let s = 0; for (const m of set) s += (this.Tassoc.get(key(w, m)) || 0) + (this.Tassoc.get(key(m, w)) || 0) + (this.Tseq.get(key(w, m)) || 0) + (this.Tseq.get(key(m, w)) || 0); return s }
-    // greedy dense neighborhood: grow S by the word most warmly threaded into it
     const S = new Set([seed])
     while (S.size < maxSize) {
       let best = null, bw = 0
@@ -994,6 +1010,19 @@ export class Eye {
       if (!best || bw < 0.5) break
       S.add(best)
     }
+    let win = 0, wb = 0
+    for (const m of [this.Tassoc, this.Tseq]) for (const [k, v] of m) {
+      const [a, b] = unkey(k); if (b === END) continue
+      const ain = S.has(a), bin = S.has(b)
+      if (ain && bin) win += v
+      else if (ain || bin) wb += v
+    }
+    return { S, win, wb, modularity: win / (win + wb + 1e-9), wTo }
+  }
+
+  collapseAround(seed, maxSize = 10) {
+    if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
+    const { S, wTo } = this._growDense(seed, maxSize)
     if (S.size < 3) return { error: 'no dense subnetwork around seed' }
     const ent = '⟦' + seed + '⟧'
     // entity vector: warmth-weighted centroid of member positions
@@ -1029,7 +1058,36 @@ export class Eye {
     const e = this.entities.get(ent)
     if (!e) return { error: 'unknown entity' }
     const r = this.unzipCartridge(e.cartridge)
+    // gateway bridges: the abstraction connects to its unfolded parts, so walks can
+    // route INTO the expanded content through the entity (recall becomes navigable)
+    for (const m of e.members) {
+      const k = key(ent, m)
+      this.Tassoc.set(k, Math.max(this.Tassoc.get(k) || 0, 0.5))
+    }
     return { entity: ent, restored: r }
+  }
+
+  // THE MATH CRADLE — an autonomous formula explorer over possible collapses. Each
+  // candidate subnetwork is a FORMULA with a calculable worth (modularity × mass); the
+  // candidates compete, and a collapse executes only when the champion's math clears the
+  // bar. The brain folds itself — consolidation as a habit, not an instruction.
+  autoConsolidate(maxEntities = 60, minModularity = 0.55) {
+    if (this.entities.size >= maxEntities) return null
+    const scores = this.tournamentScores()
+    const seeds = [...scores.entries()]
+      .filter(([w]) => !FUNCTION_WORDS.has(w) && !w.startsWith('⟦') && !this.entities.has('⟦' + w + '⟧'))
+      .sort((a, b) => b[1] - a[1]).slice(0, 16).map((x) => x[0])
+    let best = null
+    for (const seed of seeds) {
+      const g = this._growDense(seed, 10)
+      if (g.S.size < 4) continue
+      const worth = g.modularity * Math.log(1 + g.win)   // the formula: cohesion × mass
+      if (!best || worth > best.worth) best = { seed, worth, modularity: g.modularity }
+    }
+    if (!best || best.modularity < minModularity) return null   // the math must clear the bar
+    const r = this.collapseAround(best.seed, 10)
+    if (r.error) return null
+    return { ...r, modularity: +best.modularity.toFixed(2), worth: +best.worth.toFixed(2) }
   }
 
   // CARTRIDGE — the brain's state condensed to a legible, ALTERABLE formula (the

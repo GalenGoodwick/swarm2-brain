@@ -594,4 +594,24 @@ function randVecSpace(nWords, dim, seed) {
   ok('the abstraction persists after expansion (both levels live)', eye.entities.has('⟦core⟧'))
 }
 
+// ── Gate 35: THE MATH CRADLE — autonomous collapse when the math clears the bar; recall ──
+{
+  const map = {}
+  for (let i = 0; i < 6; i++) map['den' + 'abcdef'[i]] = [1, 0.05 * i, 0.02 * i]   // dense cluster
+  map.lone = [0, 1, 0]; map.apart = [0, 0.9, 0.4]                                  // sparse pair
+  const g = mockProvider(map)
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 4; i++) eye.absorb('dena denb denc dend dene denf')
+  eye.absorb('lone apart')
+  const c = eye.autoConsolidate(60, 0.55)
+  ok('the math cradle folds the dense subnetwork autonomously', c && c.entity && c.modularity >= 0.55)
+  ok('the calculation is reported (modularity, worth)', typeof c.modularity === 'number' && typeof c.worth === 'number')
+  const c2 = eye.autoConsolidate(60, 0.55)
+  ok('when no candidate clears the bar, the math refuses to fold', c2 === null)
+  // RECALL: a word folded away is one recall from being found again
+  const inner = c.members.find((m) => m !== 'dena')
+  const sk = eye.seek('lone', inner)
+  ok('failed seek RECALLS: expands the nearest entity and retries', sk.recalled === c.entity)
+}
+
 console.log(`\n  ${passed} gates passed.`)
