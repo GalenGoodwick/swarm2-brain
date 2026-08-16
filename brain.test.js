@@ -541,7 +541,9 @@ function randVecSpace(nWords, dim, seed) {
   const cv = eye.verifyClaim(r.claim, 'mindC', 'correct', 'aleph truer delta cove bay')
   ok('a correction seams a new route', cv.seamed === true)
   ok('the seam is threaded heavier than normal speech', (eye.Tassoc.get('aleph truer') || 0) > 2)
-  ok('the faulty route is NEVER touched (additive, non-destructive)', Math.abs(eye.Tassoc.get('aleph bay') - faultyBefore) < 1e-9)
+  // (superposition may warm it ambiently through shared junctions — additive physics; the
+  // law's invariant is that a correction can never WEAKEN the faulty route)
+  ok('the faulty route is never weakened (additive, non-destructive)', eye.Tassoc.get('aleph bay') >= faultyBefore - 1e-9)
 }
 
 // ── Gate 33: CARTRIDGE — zip to an alterable formula, unzip additively, edits respected ──
@@ -784,6 +786,45 @@ function randVecSpace(nWords, dim, seed) {
   const brain = new Brain(g)
   for (let i = 0; i < 5; i++) brain.speak('eyeX', 'aleph bay cove')
   ok('the brain counts lifetime contribution per eye', brain.participants.get('eyeX').sentences === 5)
+}
+
+// ── Gate 45: SUPERPOSITION — crossings warm all threads through the junction ──
+{
+  const g = mockProvider({ storm: [1, 0, 0], harbor: [0.9, 0.4, 0], ship: [0.85, 0.35, 0.2], wind: [0.3, 0.9, 0], cold: [0.2, 0.85, 0.3] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('storm harbor ship')                    // thread one lays the junction material
+  const before = eye.Tassoc.get('storm harbor')
+  eye.absorb('wind storm cold')                      // thread two CROSSES at 'storm'
+  // without superposition, 'storm harbor' would only have decayed (×0.98); with it, the
+  // crossing warmed every thread through the junction
+  ok('a crossing warms unrelated threads through the junction', eye.Tassoc.get('storm harbor') > before)
+}
+{
+  // hub dilution: the same quantum splits across degree — a rare word's threads warm more
+  const map = { rare: [1, 0, 0], mate: [0.9, 0.4, 0], hub: [0, 1, 0] }
+  for (let i = 0; i < 8; i++) map['h' + 'abcdefgh'[i]] = [0.1 * i, 0.9, 0.1]
+  const g = mockProvider(map)
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('rare mate')                            // rare: degree 1
+  eye.absorb('hub ha hb hc hd he hf hg hh')          // hub: high degree
+  const rareBefore = eye.Tassoc.get('rare mate'), hubBefore = eye.Tassoc.get('hub ha')
+  eye.absorb('rare cold')                            // no 'cold' in vocab: crossing at rare only
+  eye.absorb('hub cold')
+  const rareGain = eye.Tassoc.get('rare mate') / rareBefore
+  const hubGain = eye.Tassoc.get('hub ha') / hubBefore
+  ok('the quantum dilutes across a hub but resonates through a rare word', rareGain > hubGain)
+}
+{
+  // cross-mind doubling: a mind NEW to a word resonates twice as hard as a returning one
+  const g = mockProvider({ port: [1, 0, 0], dock: [0.9, 0.4, 0], tide: [0.8, 0.35, 0.2] })
+  const A = new Brain(g), B = new Brain(g)
+  A.speak('one', 'port dock tide'); B.speak('one', 'port dock tide')
+  const a0 = A.substrate.Tassoc.get('port dock'), b0 = B.substrate.Tassoc.get('port dock')
+  A.speak('one', 'port tide')                        // same mind re-crosses 'port'
+  B.speak('two', 'port tide')                        // a DIFFERENT mind crosses 'port'
+  const sameGain = A.substrate.Tassoc.get('port dock') - a0 * 0.98
+  const crossGain = B.substrate.Tassoc.get('port dock') - b0 * 0.98
+  ok('a different mind crossing resonates harder than the same mind returning', crossGain > sameGain * 1.5)
 }
 
 console.log(`\n  ${passed} gates passed.`)

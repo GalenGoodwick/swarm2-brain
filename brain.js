@@ -45,6 +45,8 @@ export const MINT_CROWN_N = 3     // a minted word must be woven from >=3 contex
 // RECORDED (additive, nothing punished) but only carries grounding weight once the verifier
 // has fed the brain VERIFY_STANDING sentences — verification is work by minds with skin in
 // the substrate. This raises the cost of a fake grounding; it does not create identity.
+export const CROSS_HIT = 0.5     // superposition quantum per thread-crossing at a word
+export const CROSS_MIND_GAIN = 2 // a crossing from a mind NEW to that word resonates double
 export const SEAM_GAIN = 3        // warmth multiplier for corrected-route threads
 export const VERIFY_STANDING = 5  // sentences an eye must have fed before its confirms ground
 export const GROUND_FLOOR = 1.0   // grounded edges never decay below this
@@ -158,6 +160,7 @@ export class Eye {
     this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.outHot = new Map()     // word -> total outgoing T_seq heat (for curiosity)
+    this.incident = new Map()   // word -> Set of T_assoc keys through it (superposition index)
     this.entities = new Map()   // ⟦x⟧ -> {cartridge, members, vec, delta} — collapsed subnetworks
     this.memberOf = new Map()   // word -> its fold's id (write-through routing)
     this.claims = []            // open claims: found paths awaiting swarm verification
@@ -244,9 +247,14 @@ export class Eye {
   absorb(text, eyeId = null, gain = 1) {   // gain>1 = a SEAM route (corrections thread heavier)
     this.tick++
     const raw = this._resolve(tokenizeContent(text))
+    // capture cross-mind crossings BEFORE stamping provenance: a word this eye has never
+    // carried, that another mind has, is a junction where two minds meet
+    const crossMind = new Set()
     if (eyeId) {
       this.contributors.add(eyeId)
       for (const w of raw) {                     // provenance: who contributed each word
+        const s0 = this.provenance.get(w)
+        if (s0 && s0.size && !s0.has(eyeId)) crossMind.add(w)
         let s = this.provenance.get(w); if (!s) { s = new Set(); this.provenance.set(w, s) }
         s.add(eyeId)
       }
@@ -308,6 +316,20 @@ export class Eye {
         const k3 = words[words.length - 2] + ' ' + last + ' ' + END
         this.Tseq2.set(k3, (this.Tseq2.get(k3) || 0) + 1)
       }
+    }
+    // SUPERPOSITION (Galen's design): a sentence is a thread laid across the space; where
+    // it CROSSES an existing word, ALL threads through that junction warm — a fixed
+    // quantum split across the junction's degree (a rare word resonates strongly through
+    // its few threads; a hub dilutes across its many — the balance law), and DOUBLED when
+    // the crossing mind never carried that word before: two minds meeting at a word is
+    // the strongest convergence signal the swarm produces.
+    for (const w of new Set(words)) {
+      if (FUNCTION_WORDS.has(w) || w === END) continue
+      const inc = this.incident.get(w)
+      if (!inc || !inc.size) continue
+      const quantum = CROSS_HIT * (crossMind.has(w) ? CROSS_MIND_GAIN : 1) * gain
+      const per = quantum / inc.size
+      for (const k of inc) if (this.Tassoc.has(k)) this.Tassoc.set(k, this.Tassoc.get(k) + per)
     }
     this._crystallize()
     this.forget()
@@ -372,6 +394,14 @@ export class Eye {
     for (const [k, v] of this.Tseq) {
       const a = unkey(k)[0]
       this.outHot.set(a, (this.outHot.get(a) || 0) + v)
+    }
+    // rebuild the superposition index (word -> threads through it) — runs every absorb,
+    // so the next sentence's crossings resonate against a fresh map
+    this.incident.clear()
+    for (const k of this.Tassoc.keys()) {
+      const [a, b] = unkey(k)
+      let sa = this.incident.get(a); if (!sa) { sa = new Set(); this.incident.set(a, sa) } sa.add(k)
+      let sb = this.incident.get(b); if (!sb) { sb = new Set(); this.incident.set(b, sb) } sb.add(k)
     }
     this.prunePositions()
   }
