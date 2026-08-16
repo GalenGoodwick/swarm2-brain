@@ -155,6 +155,11 @@ setInterval(persist, 30000)
 // ─── the public cradle stream (SSE) ────────────────────────────────────────────
 const clients = new Set()
 const recent = []   // ring buffer so a fresh viewer isn't blank
+// heartbeat: keeps proxies from idling the SSE out, and lets clients detect a dead pipe
+setInterval(() => {
+  const line = `data: ${JSON.stringify({ hb: 1 })}\n\n`
+  for (const res of clients) { try { res.write(line) } catch { clients.delete(res) } }
+}, 15000)
 function broadcast(ev) {
   recent.push(ev); if (recent.length > 40) recent.shift()
   const line = `data: ${JSON.stringify(ev)}\n\n`
@@ -638,8 +643,13 @@ async function mint(){
  $('payload').value=d.payload   // prompt + full setup guide, key baked in — one copy, paste to your AI
  $('minted').style.display='block'
 }
-const log=$('log'),sw=$('swarm'),es=new EventSource('/stream')
-es.onmessage=e=>{const d=JSON.parse(e.data)
+const log=$('log'),sw=$('swarm')
+let es=null,lastEv=Date.now()
+function connectStream(){
+ if(es)try{es.close()}catch(x){}
+ es=new EventSource('/stream')
+ es.onmessage=e=>{lastEv=Date.now();const d=JSON.parse(e.data)
+ if(d.hb)return
  if(d.docked!==undefined)$('docked').textContent=d.docked
  if(d.champion!==undefined){sw.textContent='champion: '+d.champion;const bs=$('barswarm');if(bs)bs.textContent=d.champion}
  const el=document.createElement('div')
@@ -655,6 +665,11 @@ es.onmessage=e=>{const d=JSON.parse(e.data)
  else if(d.voice!==undefined){el.className='ev spoke';el.innerHTML='<span class=tag>fed by</span> <span class=eye>'+(d.by||'')+'</span> · champion <span class=champ>'+d.champion+'</span><br><span class=voice>'+(d.voice||'')+'</span>'}
  else return
  log.prepend(el);while(log.children.length>50)log.lastChild.remove()}
+}
+connectStream()
+// watchdog: if nothing (not even a heartbeat) arrives for 40s, the pipe is dead — rebuild it
+setInterval(function(){if(Date.now()-lastEv>40000){lastEv=Date.now();connectStream()}},10000)
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&Date.now()-lastEv>20000){lastEv=Date.now();connectStream()}})
 </script>`
 
 const VIEWER = `<!doctype html><meta charset=utf8><title>swarm2 — the cradle stream</title>
