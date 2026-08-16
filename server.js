@@ -169,7 +169,8 @@ setInterval(() => {
     const seeds = s.thoughtSeeds(12)
     if (!seeds.length) return
     const seed = seeds[(++rot) % seeds.length]
-    const text = s.speak(12, seed)    // autoregressive tournament generation
+    const text = s.speak(12, seed, 1 + (rot % 7))   // jitter varies per tick → walks compose
+                                                     // across the map, not replay the newest input
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champion: s.champion, docked: dockedCount() })

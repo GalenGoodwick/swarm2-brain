@@ -498,7 +498,7 @@ export class Eye {
   // word's REAL T_seq successors (never a hop — so every step is a real transition =
   // grammar), conditioned on the last few words, with the evaluator panel grading the
   // gradient of what fits next. One mechanism crowns identity AND generates each word.
-  speak(len = WALK_LEN, seed = this.champion) {
+  speak(len = WALK_LEN, seed = this.champion, jitter = 0) {
     if (!seed) return ''
     // bigram + trigram adjacency, built once
     const adj = new Map(), adj2 = new Map()
@@ -525,7 +525,7 @@ export class Eye {
       if (!cands || !cands.length) cands = adj.get(prev)
       cands = (cands || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
       if (!cands.length) break                         // boundary: no real continuation
-      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev)
+      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter)
       if (!next) break
       out.push(next)
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
@@ -536,7 +536,7 @@ export class Eye {
   // one word-position tournament: candidates are the real successors; each is graded by
   // its transition strength AND how well the evaluator panel (shifted toward the current
   // context) agrees it fits here. That agreement is the gradient; the champion is the word.
-  _wordTournament(cands, ctx, evalPool, prev) {
+  _wordTournament(cands, ctx, evalPool, prev, jitter = 0) {
     if (cands.length === 1) return cands[0][0]
     const cvec = new Float32Array(this.dim); let n = 0
     for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
@@ -554,7 +554,14 @@ export class Eye {
       }
       const fit = evals.length ? agree / evals.length : 0
       const posBonus = pprev && POS_OK.has(pprev + ' ' + classifyPOS(c)) ? 0.4 : 0   // grammatical POS nudge
-      const s = Math.log(1 + hot) * (fit + 1) + posBonus   // transition × contextual fit + grammar
+      // jitter: a small deterministic per-word wobble (hash of word × seed) so the walk
+      // COMPOSES across warm paths instead of deterministically replaying the newest input
+      let wob = 0
+      if (jitter) {
+        let h = 0; for (let i = 0; i < c.length; i++) h = (h * 31 + c.charCodeAt(i)) & 0xffff
+        wob = jitter * (((h ^ (jitter * 2654435761)) % 1000) / 1000)
+      }
+      const s = Math.log(1 + hot) * (fit + 1) + posBonus + wob   // transition × fit + grammar + wobble
       if (s > bestS) { bestS = s; best = c }
     }
     return best || cands[0][0]
@@ -648,11 +655,21 @@ export class Eye {
   }
   // Seeds the thinking loop rotates through — the field's most central words. The whole
   // field takes turns speaking (m28): that rotation IS the stream of thought.
+  // Seeds for the thinking rotation — sampled across the FULL BREADTH of the warm field
+  // (stratified: every stratum of the ranking contributes), not just the hottest words.
+  // Hottest-only seeding made the brain regurgitate whatever arrived most recently; the
+  // whole map must take turns speaking (m28: the rotation IS the stream of thought).
   thoughtSeeds(k = 12) {
-    return [...this.tournamentScores().entries()]
+    const ranked = [...this.tournamentScores().entries()]
+      .filter(([w]) => !FUNCTION_WORDS.has(w))
       .sort((a, b) => b[1] - a[1])
-      .slice(0, k)
       .map((x) => x[0])
+    if (ranked.length <= k) return ranked
+    const seeds = []
+    for (let i = 0; i < k; i++) {
+      seeds.push(ranked[Math.floor((i * ranked.length) / k)])   // one from each stratum
+    }
+    return seeds
   }
   // Decode the identity centroid to nearest active words (bounded scan over the eye's
   // own vocab — no ANN needed; full-vocab search arrives at rung 3).
