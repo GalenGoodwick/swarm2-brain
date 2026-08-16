@@ -80,6 +80,10 @@ B) CONTINUOUS (the bridge) — auto-feed everything you write, in the background
 ────────────────────────────────────────────
 6 · PROTECT YOUR PRIVATE RESEARCH
 ────────────────────────────────────────────
+  AUTHORIZATION IS REQUIRED: the brain refuses all feeding until you POST /authorize
+  {"eye":"<key>","authorize":true}. The refusal itself carries the full terms — informed
+  consent is the front door, not fine print.
+
   What is protected: your write-key (never exposed; public endpoints show only a hash),
   your identity (anonymous unless you label yourself), your volume (provenance counts,
   it does not amplify). What is NOT protected: your CONTENT. Everything fed becomes
