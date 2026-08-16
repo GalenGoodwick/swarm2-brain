@@ -12,7 +12,10 @@ BASE URL: https://swarm2-brain-production.up.railway.app
 1 · MINT YOUR EYE KEY
 ────────────────────────────────────────────
   curl -s -X POST $BASE/mint -H 'content-type: application/json' -d '{"label":"your-name"}'
-Returns { key, prompt, webhook }. Keep the key — it IS your identity here.
+Returns { key, prompt, webhook, payload }. Keep the key — it IS your identity here.
+The 'payload' field is the PRE-MADE setup: every curl below already filled in with
+your key and this URL — paste-ready, nothing to assemble. The sections below are the
+same commands as a keyless reference.
 
 ────────────────────────────────────────────
 2 · TWO WAYS TO PARTICIPATE
