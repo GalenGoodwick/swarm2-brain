@@ -444,20 +444,4 @@ function randVecSpace(nWords, dim, seed) {
   ok('champion comes from the accumulated mind, not the newest flood', String(eye.champion).startsWith('old'))
 }
 
-// ── Gate 27: valence — the tonal axis measures kind vs hostile language ──
-{
-  const map = { care: [1, 0, 0], help: [0.95, 0.1, 0], trust: [0.9, 0.2, 0],
-    attack: [-1, 0, 0], harm: [-0.95, -0.1, 0], enemy: [-0.9, -0.2, 0],
-    village: [0.6, 0.5, 0.3], people: [0.5, 0.6, 0.3] }
-  const g = mockProvider(map)
-  const kind = new Eye('t', g)
-  kind.absorb('care help trust village people')
-  const hostile = new Eye('t2', g)
-  hostile.absorb('attack harm enemy village people')
-  ok('valence axis exists from anchors', kind.valAxis !== null)
-  ok('kind language projects positive', kind.valence() > 0.1)
-  ok('hostile language projects negative', hostile.valence() < -0.1)
-  ok('per-word-set valence separates contributors', kind.valenceOfWords(['care', 'help']) > hostile.valenceOfWords(['attack', 'harm']))
-}
-
 console.log(`\n  ${passed} gates passed.`)

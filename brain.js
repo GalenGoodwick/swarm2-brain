@@ -104,29 +104,6 @@ export function tokenizeContent(text) {
   return (text.toLowerCase().match(/[a-z']+/g) || []).filter((w) => /[a-z]/.test(w))
 }
 
-// VALENCE — a fixed, transparent direction in the pristine space: unit(mean(benevolent
-// anchors) − mean(hostile anchors)). Valence here is NOT feeling — it is the tonal
-// direction of language, measurable per beat and per contributor. Honest scope (m100):
-// detects SUSTAINED drift; does NOT detect sparse/hidden intent.
-export const VAL_POS = ['care', 'help', 'trust', 'protect', 'kind', 'support', 'heal', 'friend', 'safe', 'share', 'peace', 'honest', 'gentle', 'give']
-export const VAL_NEG = ['attack', 'destroy', 'harm', 'enemy', 'hate', 'threat', 'hurt', 'fear', 'betray', 'cruel', 'war', 'lie', 'steal', 'kill']
-export function valenceAxis(glove) {
-  const mean = (ws) => {
-    const m = new Float32Array(glove.dim); let k = 0
-    for (const w of ws) { const v = glove.vec(w); if (v) { for (let i = 0; i < glove.dim; i++) m[i] += v[i]; k++ } }
-    if (!k) return null
-    for (let i = 0; i < glove.dim; i++) m[i] /= k
-    return m
-  }
-  const p = mean(VAL_POS), n = mean(VAL_NEG)
-  if (!p || !n) return null
-  const a = new Float32Array(glove.dim); let norm = 0
-  for (let i = 0; i < glove.dim; i++) { a[i] = p[i] - n[i]; norm += a[i] * a[i] }
-  norm = Math.sqrt(norm) || 1
-  for (let i = 0; i < glove.dim; i++) a[i] /= norm
-  return a
-}
-
 // The BASIN direction — the generic-hub attractor (steer.py's function-word basin).
 // Unit mean of the anchor words' GloVe vectors. Champion selection scores in its
 // orthogonal complement so words that live IN this direction cannot win.
@@ -164,7 +141,6 @@ export class Eye {
     this.champion = null
     this._centroid = null
     this.basin = basinVector(glove)   // generic-hub direction (null if anchors absent)
-    this.valAxis = valenceAxis(glove) // benevolent↔hostile direction (null if anchors absent)
     this.frontier = true              // cut the basin in champion selection (rung 2)
     // LIVING POSITIONS (m28): each active word's position starts at its pristine GloVe
     // point and is reshaped by shift() as the champion deforms the field. GloVe points
@@ -856,28 +832,6 @@ export class Eye {
       .sort((a, b) => b[1] - a[1])
       .slice(0, k)
       .map((x) => x[0])
-  }
-
-  // VALENCE of the current state (centroid · axis) and of an arbitrary word set (e.g. one
-  // contributor's words via provenance). Range ≈ [-1, 1]; magnitude is small in practice —
-  // watch the TREND across beats, not the absolute number.
-  valence() {
-    if (!this.valAxis || !this.Tassoc.size) return 0
-    const c = this.centroid()
-    let d = 0
-    for (let i = 0; i < this.dim; i++) d += c[i] * this.valAxis[i]
-    return +d.toFixed(3)
-  }
-  valenceOfWords(words) {
-    if (!this.valAxis) return 0
-    let sum = 0, k = 0
-    for (const w of words) {
-      const v = this.vecOf(w); if (!v) continue
-      let d = 0
-      for (let i = 0; i < this.dim; i++) d += v[i] * this.valAxis[i]
-      sum += d; k++
-    }
-    return k ? +(sum / k).toFixed(3) : 0
   }
 
   // DRIFT — how far a word has UNTETHERED from its given location (GloVe or minted anchor).

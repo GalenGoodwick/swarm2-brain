@@ -99,7 +99,7 @@ let history = []
 function snapshot() {
   const s = brain.substrate
   if (!s.Tassoc.size) { history.push({ t: Date.now(), champion: null, lens: [] }); if (history.length > HISTORY_MAX) history.shift(); return }
-  history.push({ t: Date.now(), champion: s.champion, lens: s.decodeCentroid(10), valence: s.valence() })
+  history.push({ t: Date.now(), champion: s.champion, lens: s.decodeCentroid(10) })
   if (history.length > HISTORY_MAX) history.shift()
 }
 setInterval(snapshot, 30000)
@@ -255,7 +255,6 @@ createServer(async (req, res) => {
     const s = brain.substrate
     return json(res, {
       version: BRAIN_VERSION, champion: s.champion, threads: s.Tassoc.size,
-      valence: s.valence(),
       docked: dockedCount(), participants: [...brain.participants.keys()].map((id) => pubOf(id)),
     })
   }
@@ -270,12 +269,7 @@ createServer(async (req, res) => {
     const distinctRaw = s.distinctWords(20)
     const distinct = {}
     for (const id in distinctRaw) distinct[pubOf(id)] = distinctRaw[id]
-    // per-contributor VALENCE — the tonal direction each voice is pulling the room
-    const byWords = new Map()
-    for (const [w, set] of s.provenance) for (const id of set) { let l = byWords.get(id); if (!l) { l = []; byWords.set(id, l) } l.push(w) }
-    const valenceByParticipant = {}
-    for (const [id, ws] of byWords) valenceByParticipant[pubOf(id)] = s.valenceOfWords(ws)
-    return json(res, { participants: brain.participants.size, minEyes, roomValence: s.valence(), valenceByParticipant, consensusWords, distinct })
+    return json(res, { participants: brain.participants.size, minEyes, consensusWords, distinct })
   }
 
   // VECTOR SEARCH over the ONE brain — nearest vocab words to a query + which participants
