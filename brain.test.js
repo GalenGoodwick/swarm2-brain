@@ -751,4 +751,17 @@ function randVecSpace(nWords, dim, seed) {
   ok('restored words still land their sentences (no run-on)', s.split(' ').length <= 4)
 }
 
+// ── Gate 43: endings ride out the cap trim (grammar infrastructure never purged) ──
+{
+  const g = mockProvider(randVecSpace(30, 6, 77))
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb(wname(1) + ' ' + wname(2) + ' ' + wname(3))          // learns an ending at wname(3)
+  const ek = wname(3) + ' ⏹'
+  // flood Tseq far past the cap with hotter synthetic edges
+  for (let i = 0; i < STATE_WINDOW + 300; i++) eye.Tseq.set('x' + i + ' y' + i, 5 + (i % 7))
+  eye.forget()
+  ok('the ending survives a cap trim that evicts hotter content', eye.Tseq.has(ek))
+  ok('the cap still holds overall', eye.Tseq.size <= STATE_WINDOW + 50)
+}
+
 console.log(`\n  ${passed} gates passed.`)

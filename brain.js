@@ -348,8 +348,15 @@ export class Eye {
         for (const k of this.groundedEdges) if (m.has(k) && m.get(k) < GROUND_FLOOR) m.set(k, GROUND_FLOOR)
       }
       if (m.size > STATE_WINDOW) {
-        const keep = [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, STATE_WINDOW)
+        // ENDINGS are grammar infrastructure, not content — systematically the coolest
+        // threads, so cap eviction purges them first and speech can never land (run-ons).
+        // They ride out the trim; decay still applies to them like everything else.
+        const isEnd = (k) => m === this.Tseq && k.endsWith(' ' + END)
+        const endings = m === this.Tseq ? [...m.entries()].filter(([k, v]) => isEnd(k) && v > 0.05) : []
+        const keep = [...m.entries()].filter(([k]) => !isEnd(k))
+          .sort((x, y) => y[1] - x[1]).slice(0, Math.max(0, STATE_WINDOW - endings.length))
         m.clear()
+        for (const [k, v] of endings) m.set(k, v)
         for (const [k, v] of keep) m.set(k, v)
         if (m === this.Tassoc) for (const k of this.groundedEdges) if (!m.has(k)) m.set(k, GROUND_FLOOR)
       }
