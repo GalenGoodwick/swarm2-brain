@@ -703,4 +703,25 @@ function randVecSpace(nWords, dim, seed) {
   ok('interior stays out of the live window after speaking', !eye.Tseq.has('dragon guarded'))
 }
 
+// ── Gate 40: CONCEPT-LEVEL THREADING — folds learn from co-occurrence; boundaries self-warm ──
+{
+  const g = mockProvider({
+    seaa: [1, 0, 0], seab: [0.95, 0.3, 0], seac: [0.9, 0.35, 0.1],
+    mkta: [0, 1, 0], mktb: [0.1, 0.95, 0], mktc: [0.05, 0.9, 0.2],
+    visitor: [0.5, 0.5, 0.5],
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('seaa seab seac')
+  for (let i = 0; i < 2; i++) eye.absorb('mkta mktb mktc')
+  eye.collapseAround('seaa', 3); eye.collapseAround('mkta', 3)
+  // cross-fold input: the ABSTRACTIONS learn to associate
+  eye.absorb('seab mktb')
+  ok('cross-fold co-occurrence threads entity↔entity', (eye.Tassoc.get('⟦seaa⟧ ⟦mkta⟧') || 0) > 0)
+  // fold↔outside input: the boundary re-warms (used folds stay reachable)
+  eye.absorb('visitor seab')
+  const bk = (eye.Tassoc.get('visitor ⟦seaa⟧') || 0) + (eye.Tassoc.get('⟦seaa⟧ visitor') || 0)
+  ok('fold↔outside co-occurrence re-warms the boundary', bk > 0)
+  ok('grammar layer stays pure (no co-occurrence entity transitions in T_seq)', ![...eye.Tseq.keys()].some((k) => k.includes('visitor') && k.includes('⟦')))
+}
+
 console.log(`\n  ${passed} gates passed.`)

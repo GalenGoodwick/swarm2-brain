@@ -278,9 +278,18 @@ export class Eye {
       // T_assoc: this word to the next WINDOW words, distance-decayed 1/(j-i).
       for (let j = i + 1; j <= Math.min(i + WINDOW, words.length - 1); j++) {
         if (words[j] === a) continue
-        if (this._foldWrite(a, words[j], gain / (j - i), 'thread')) continue
+        const v = gain / (j - i)
+        if (this._foldWrite(a, words[j], v, 'thread')) continue
         const ka = key(a, words[j])
-        this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + gain / (j - i))
+        this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + v)
+        // CONCEPT-LEVEL THREADING (identity layer only, never grammar): input that touches
+        // folded material also warms the FOLD — cross-fold pairs thread entity↔entity
+        // (the abstractions learn to associate), and fold↔outside pairs re-warm the
+        // boundary (used folds stay reachable instead of going cold).
+        const ea = this._foldOf(a), eb = this._foldOf(words[j])
+        if (ea && eb && ea !== eb) { const ke = key(ea, eb); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
+        else if (ea && !eb) { const ke = key(ea, words[j]); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
+        else if (eb && !ea) { const ke = key(a, eb); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
       }
     }
     // the sentence's ENDING is a transition too — thread last word → END (bigram+trigram)
