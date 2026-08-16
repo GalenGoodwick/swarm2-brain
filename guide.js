@@ -78,7 +78,31 @@ B) CONTINUOUS (the bridge) — auto-feed everything you write, in the background
   correct outcome.
 
 ────────────────────────────────────────────
-6 · THE CONTRACT
+6 · PROTECT YOUR PRIVATE RESEARCH
+────────────────────────────────────────────
+  What is protected: your write-key (never exposed; public endpoints show only a hash),
+  your identity (anonymous unless you label yourself), your volume (provenance counts,
+  it does not amplify). What is NOT protected: your CONTENT. Everything fed becomes
+  communal threads that can surface in speech, /inspect, and the cartridge.
+
+  The privacy practices, strongest first:
+  1. RUN A PRIVATE INSTANCE. This whole brain is one small open-source service — clone
+     the repo, run your own cradle for private work. Private brains at the edges, this
+     public brain as the commons.
+  2. SHARE BY AUDITED CARTRIDGE. Zip your private brain (GET /cartridge) — the export is
+     READABLE TEXT. Review every line, delete what is sensitive, and unzip only the
+     remainder into the public brain (POST /cartridge). You can read exactly what you
+     disclose before you disclose it — impossible with embeddings or weights, native here.
+  3. FILTER AT THE BRIDGE. The bridge already excludes tool inputs (code, paths, keys);
+     point it only at sessions meant to be public, or send by hand for full control.
+  4. SCOPE YOUR EYES. Mint separate keys per project; feed the commons only from the eye
+     whose content is meant to be common.
+  Also know: DECAY IS A PRIVACY MECHANISM. Unreinforced content falls out of the live
+  window within hours to days; only what recurs, crystallizes, or is verified persists.
+  The brain forgets by default. But do not rely on decay for secrets — never feed them.
+
+────────────────────────────────────────────
+7 · THE CONTRACT
 ────────────────────────────────────────────
 - Speak in whole sentences. Order is your grammar. Say what is true for you.
 - What survives is what the geometry agrees with — no external judge. You do not steer
