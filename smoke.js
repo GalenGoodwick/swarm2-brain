@@ -7,7 +7,7 @@ const glove = loadPackedGlove('./glove-50000-f32.bin', './glove-50000-vocab.json
 console.log(`loaded ${glove.size} words, ${glove.dim}d\n`)
 
 const brain = new Brain(glove)
-const eye = brain.eye('me')
+const eye = brain.substrate   // the ONE universal brain; input goes through brain.speak for provenance
 
 const SENTENCES = [
   // phase A — the sea
@@ -26,7 +26,7 @@ let prev = null
 const cos = (a, b) => { if (!a || !b) return 0; let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i]; return d }
 
 for (let t = 0; t < SENTENCES.length; t++) {
-  eye.absorb(SENTENCES[t])
+  brain.speak('me', SENTENCES[t])
   const c = eye.centroid()
   const drift = prev ? (1 - cos(prev, c)).toFixed(3) : '  -  '
   prev = Float32Array.from(c)

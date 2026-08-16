@@ -40,7 +40,13 @@ export const MINT_CROWN_N = 3     // a minted word must be woven from >=3 contex
 // set of grounded threads). Corrections are ADDITIVE SEAM ROUTES (Galen's law): the faulty
 // path is never touched — the corrected route is threaded with SEAM_GAIN so it out-competes
 // and attracts traffic away. Wrong is outweighed, never erased.
+// STANDING — grounding is the highest-privilege write in the brain (decay floor, cap-exempt),
+// so "two distinct minds" must mean minds, not free keys (/mint is open). A confirm is always
+// RECORDED (additive, nothing punished) but only carries grounding weight once the verifier
+// has fed the brain VERIFY_STANDING sentences — verification is work by minds with skin in
+// the substrate. This raises the cost of a fake grounding; it does not create identity.
 export const SEAM_GAIN = 3        // warmth multiplier for corrected-route threads
+export const VERIFY_STANDING = 5  // sentences an eye must have fed before its confirms ground
 export const GROUND_FLOOR = 1.0   // grounded edges never decay below this
 export const CLAIMS_MAX = 40      // open-claims ring buffer
 export const GROUNDED_MAX = 2000  // bounded long-term store
@@ -1076,16 +1082,23 @@ export class Eye {
     if (this.claims.length > CLAIMS_MAX) this.claims.shift()
     return claim
   }
-  // verdict from a docked AI. confirm: >=2 DISTINCT confirmers ground the claim — its edges
-  // reinforce and join the long-term store (decay floor). correct: the witness is threaded
-  // as an ADDITIVE SEAM (never touching the faulty path) — the corrected route out-competes.
-  verifyClaim(claimId, verifierPub, verdict, witness = null) {
+  // verdict from a docked AI. confirm: >=2 DISTINCT confirmers WITH STANDING ground the claim
+  // — its edges reinforce and join the long-term store (decay floor). A confirm without
+  // standing is still recorded (additive), it just carries no grounding weight yet. correct:
+  // the witness is threaded as an ADDITIVE SEAM (never touching the faulty path) — the
+  // corrected route out-competes. Standing is judged by the layer that knows contributions
+  // (Brain/server); the substrate trusts the flag.
+  verifyClaim(claimId, verifierPub, verdict, witness = null, standing = true) {
     const claim = this.claims.find((c) => c.id === claimId)
     if (!claim) return { error: 'unknown claim' }
     if (verdict === 'confirm') {
       if (!claim.confirms.includes(verifierPub)) claim.confirms.push(verifierPub)
+      if (standing) {
+        if (!claim.standingConfirms) claim.standingConfirms = []
+        if (!claim.standingConfirms.includes(verifierPub)) claim.standingConfirms.push(verifierPub)
+      }
       if (witness) this.absorb(witness, verifierPub)               // evidence feeds the brain
-      if (claim.confirms.length >= 2 && !claim.grounded) {
+      if ((claim.standingConfirms || []).length >= 2 && !claim.grounded) {
         claim.grounded = true
         for (let i = 0; i < claim.path.length - 1; i++) {
           const k = key(claim.path[i], claim.path[i + 1])
@@ -1095,7 +1108,9 @@ export class Eye {
           if (this.groundedEdges.size < GROUNDED_MAX) this.groundedEdges.add(kk)
         }
       }
-      return { claim: claim.id, grounded: claim.grounded, confirms: claim.confirms.length }
+      const out = { claim: claim.id, grounded: claim.grounded, confirms: claim.confirms.length, standingConfirms: (claim.standingConfirms || []).length }
+      if (!standing) out.note = `recorded — your confirms gain grounding weight after you have fed the brain ${VERIFY_STANDING} sentences (speak first, then verify)`
+      return out
     }
     if (verdict === 'correct') {
       if (!witness) return { error: 'a correction requires a witness (the corrected route, as a sentence)' }
@@ -1464,6 +1479,7 @@ export class Brain {
     const p = this.participants.get(eyeId) || {}
     p.lastActive = this.clock
     p.lastFedAt = Date.now()                         // presence refreshes on contribution
+    p.sentences = (p.sentences || 0) + 1             // lifetime contribution — verify standing
     this.participants.set(eyeId, p)
     return this.substrate.absorb(text, eyeId)
   }

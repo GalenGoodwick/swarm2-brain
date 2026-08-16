@@ -764,4 +764,26 @@ function randVecSpace(nWords, dim, seed) {
   ok('the cap still holds overall', eye.Tseq.size <= STATE_WINDOW + 50)
 }
 
+// ── Gate 44: STANDING — grounding weight is earned by feeding; free keys never ground ──
+{
+  const g = mockProvider({ aleph: [1, 0, 0], bay: [0.8, 0.5, 0], cove: [0.5, 0.8, 0], delta: [0, 1, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('aleph bay cove delta')
+  const r = eye.seek('aleph', 'delta')
+  // two fresh keys confirm WITHOUT standing: recorded, never grounded
+  const v1 = eye.verifyClaim(r.claim, 'freshA', 'confirm', null, false)
+  const v2 = eye.verifyClaim(r.claim, 'freshB', 'confirm', null, false)
+  ok('standingless confirms are recorded (additive, nothing rejected)', v2.confirms === 2)
+  ok('a standingless confirm answers with the path to standing', typeof v1.note === 'string')
+  ok('two fresh keys do NOT ground (grounding weight is earned)', v2.grounded === false && eye.claims.find((c) => c.id === r.claim).grounded === false)
+  // two minds WITH standing ground it — the shared law unchanged for real minds
+  eye.verifyClaim(r.claim, 'mindA', 'confirm', null, true)
+  const v4 = eye.verifyClaim(r.claim, 'mindB', 'confirm', null, true)
+  ok('two standing minds still ground the claim', v4.grounded === true && v4.standingConfirms === 2)
+  // the Brain layer counts contribution — the ledger standing is judged from
+  const brain = new Brain(g)
+  for (let i = 0; i < 5; i++) brain.speak('eyeX', 'aleph bay cove')
+  ok('the brain counts lifetime contribution per eye', brain.participants.get('eyeX').sentences === 5)
+}
+
 console.log(`\n  ${passed} gates passed.`)

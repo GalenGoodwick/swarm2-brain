@@ -7,7 +7,7 @@
 import { createServer } from 'http'
 import { randomBytes, createHash } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { Brain, Eye, BRAIN_VERSION, unkey, tokenizeContent, FUNCTION_WORDS } from './brain.js'
+import { Brain, Eye, BRAIN_VERSION, unkey, tokenizeContent, FUNCTION_WORDS, VERIFY_STANDING } from './brain.js'
 import { loadPackedGlove } from './glove.js'
 import { ENTRY_PROMPT } from './entry-prompt.js'
 import { GUIDE } from './guide.js'
@@ -120,7 +120,7 @@ function persist() {
       entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec], open: !!e.open, delta: [...(e.delta || [])] }]),
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
-    participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0, p.lastFedAt || 0]),
+    participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0, p.lastFedAt || 0, p.sentences || 0, p.label || null]),
     history,
   }
   try { writeFileSync(STATE_PATH, JSON.stringify(state)) } catch (e) { console.log('persist err', e.message) }
@@ -147,7 +147,7 @@ function restore() {
       for (const [id, e] of s.entities) if (!e.open) for (const m of e.members) s.memberOf.set(m, id)
     }
     // presence restores as a timestamp; anyone quiet >1h shows undocked until they feed
-    for (const [id, la, ts] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la, lastFedAt: ts || 0 })
+    for (const [id, la, ts, sn, lb] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la, lastFedAt: ts || 0, sentences: sn || 0, label: lb || undefined })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)
   } catch (e) { console.log('restore err', e.message) }
 }
@@ -264,7 +264,8 @@ createServer(async (req, res) => {
   if (p === '/plug' && req.method === 'POST') {
     const { eye } = await body(req)
     if (!eye) return json(res, { error: 'eye required' }, 400)
-    brain.participants.set(eye, { lastActive: brain.clock })
+    const prev = brain.participants.get(eye) || {}          // re-plug must not wipe standing/presence
+    brain.participants.set(eye, { ...prev, lastActive: brain.clock })
     return json(res, { eye, prompt: ENTRY_PROMPT, state: brain.substrate.metaPrecedent({ threads: 40 }) })
   }
 
@@ -436,7 +437,7 @@ createServer(async (req, res) => {
     const s = brain.substrate
     return json(res, {
       grounded: s.claims.filter((c) => c.grounded).length,
-      open: s.claims.map((c) => ({ id: c.id, text: c.text, confirms: c.confirms.length, corrections: c.corrections.length, grounded: c.grounded })),
+      open: s.claims.map((c) => ({ id: c.id, text: c.text, confirms: c.confirms.length, standingConfirms: (c.standingConfirms || []).length, corrections: c.corrections.length, grounded: c.grounded })),
     })
   }
   // POST /verify {eye:<your key>, claim, verdict:'confirm'|'correct', witness?}
@@ -449,7 +450,8 @@ createServer(async (req, res) => {
     if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
     brain.clock++
     const part = brain.participants.get(eye); part.lastActive = brain.clock   // verifying is participating
-    const r = brain.substrate.verifyClaim(claim, pubOf(eye), verdict, witness || null)
+    const standing = (part.sentences || 0) >= VERIFY_STANDING                 // grounding weight is EARNED by feeding
+    const r = brain.substrate.verifyClaim(claim, pubOf(eye), verdict, witness || null, standing)
     if (r.grounded) broadcast({ t: Date.now(), groundedClaim: claim, docked: dockedCount() })
     return json(res, r)
   }
