@@ -657,7 +657,7 @@ export class Eye {
   // word's REAL T_seq successors (never a hop — so every step is a real transition =
   // grammar), conditioned on the last few words, with the evaluator panel grading the
   // gradient of what fits next. One mechanism crowns identity AND generates each word.
-  speak(len = WALK_LEN, seed = this.champion, jitter = 0) {
+  speak(len = WALK_LEN, seed = this.champion, jitter = 0, trace = null) {
     if (!seed) return ''
     // bigram + trigram adjacency, built once
     const adj = new Map(), adj2 = new Map()
@@ -685,7 +685,7 @@ export class Eye {
       if (!cands || !cands.length) cands = adj.get(prev)
       cands = (cands || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
       if (!cands.length) break                         // boundary: no real continuation
-      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter, step / len)
+      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter, step / len, trace)
       if (!next || next === END) break               // END elected: the sentence LANDS
       // THE FOLD IS A ROOM, NOT A WALL — reaching an entity, the walk DESCENDS into its
       // interior and rides the dense zipped threads (the most practiced routes in the
@@ -761,8 +761,9 @@ export class Eye {
   // one word-position tournament: candidates are the real successors; each is graded by
   // its transition strength AND how well the evaluator panel (shifted toward the current
   // context) agrees it fits here. That agreement is the gradient; the champion is the word.
-  _wordTournament(cands, ctx, evalPool, prev, jitter = 0, progress = 0) {
+  _wordTournament(cands, ctx, evalPool, prev, jitter = 0, progress = 0, trace = null) {
     if (cands.length === 1) return cands[0][0]
+    const scored = trace ? [] : null
     // END competes like any candidate, scored by its learned transition heat × progress —
     // improbable early in the walk, increasingly electable as the sentence matures.
     let endScore = -Infinity
@@ -797,10 +798,17 @@ export class Eye {
         wob = jitter * (((h ^ (jitter * 2654435761)) % 1000) / 1000)
       }
       const s = Math.log(1 + hot) * (fit + 1) + posBonus + wob   // transition × fit + grammar + wobble
+      if (scored) scored.push([c, s])
       if (s > bestS) { bestS = s; best = c }
     }
-    if (endScore > bestS) return END               // the ending won the tournament
-    return best || cands[0][0]
+    const chosen = endScore > bestS ? END : (best || cands[0][0])
+    if (trace && scored) {
+      // the roads not taken: this position's losing candidates, scored
+      trace.push({ after: prev, chose: chosen === END ? '(end)' : chosen,
+        notTaken: scored.filter(([c]) => c !== chosen).sort((a, b) => b[1] - a[1]).slice(0, 3)
+          .map(([c, s]) => ({ w: c, s: +s.toFixed(2) })) })
+    }
+    return chosen
   }
 
   // RESPOND — read-only conversation: the prompt CONDITIONS which region of the mind
@@ -822,7 +830,7 @@ export class Eye {
     const seeds = [...new Set([...inField.slice(0, 2), ...nearest])].slice(0, 4)
     if (!seeds.length && this.champion) seeds.push(this.champion)
     // candidate walks compete: the most prompt-relevant utterance wins
-    let best = null, bestS = -Infinity
+    let best = null, bestS = -Infinity, bestJit = 0
     for (let i = 0; i < seeds.length; i++) {
       const t = this.speak(len, seeds[i], 2 + i)
       const ws = t.split(' ')
@@ -830,7 +838,13 @@ export class Eye {
       let r = 0
       for (const w of ws) r += rel(w)
       const s = r / ws.length + 0.05 * ws.length
-      if (s > bestS) { bestS = s; best = { seed: seeds[i], response: t } }
+      if (s > bestS) { bestS = s; best = { seed: seeds[i], response: t }; bestJit = 2 + i }
+    }
+    if (best) {
+      // replay the winning walk with tracing on — the roads not taken, per position
+      const trace = []
+      this.speak(len, best.seed, bestJit, trace)
+      best.trace = trace.filter((t) => t.notTaken.length)
     }
     return best || { seed: null, response: '' }
   }
@@ -1138,6 +1152,7 @@ export class Eye {
   }
 
   collapseAround(seed, maxSize = 10) {
+    if (FUNCTION_WORDS.has(seed)) return { error: 'grammar hubs never fold' }  // folding ⟦the⟧ destroys the voice
     if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
     const { S } = this._growDense(seed, maxSize)
     if (S.size < 3) return { error: 'no dense subnetwork around seed' }

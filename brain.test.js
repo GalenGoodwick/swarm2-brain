@@ -724,4 +724,18 @@ function randVecSpace(nWords, dim, seed) {
   ok('grammar layer stays pure (no co-occurrence entity transitions in T_seq)', ![...eye.Tseq.keys()].some((k) => k.includes('visitor') && k.includes('⟦')))
 }
 
+// ── Gate 41: roads not taken — the walk's losing candidates are visible; grammar hubs never fold ──
+{
+  const g = mockProvider({ sea: [1, 0, 0], waves: [0.95, 0.3, 0], boat: [0.9, 0.4, 0], storm: [0.6, 0.7, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('sea waves boat')
+  eye.absorb('sea storm boat')                     // a real fork after 'sea'
+  const r = eye.respond('tell me about the sea')
+  ok('the winning walk carries a trace', Array.isArray(r.trace))
+  const tr = []
+  eye.speak(8, 'sea', 3, tr)
+  ok('forks show the road not taken with its score', tr.some((t) => t.notTaken.length > 0 && typeof t.notTaken[0].s === 'number'))
+  ok('grammar hubs refuse to fold', eye.collapseAround('the').error === 'grammar hubs never fold')
+}
+
 console.log(`\n  ${passed} gates passed.`)

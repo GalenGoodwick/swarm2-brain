@@ -588,7 +588,14 @@ async function askBrain(){
   const r=await fetch('/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t})})
   const d=await r.json()
   if(d.response){
-   out.innerHTML='<div class=ev style="border-left-color:#fd7"><span class=tag>the brain answers</span> <span style="color:#89a;font-size:11px">(spoke from: '+esc((d.seed||'').split('·').join(' '))+')</span><br><span class=voice style="font-size:15px">'+esc(d.response)+'</span></div>'
+   let h='<div class=ev style="border-left-color:#fd7"><span class=tag>the brain answers</span> <span style="color:#89a;font-size:11px">(spoke from: '+esc((d.seed||'').split('·').join(' '))+')</span><br><span class=voice style="font-size:15px">'+esc(d.response)+'</span></div>'
+   if(d.trace&&d.trace.length){
+    h+='<div style="margin-top:8px;color:#678;font-size:12px"><b style="color:#89a">roads not taken</b> — each choice this walk made, and what it passed over:</div>'
+    for(const t of d.trace.slice(0,10)){
+     h+='<div style="color:#678;font-size:12px;padding-left:10px">after <span style="color:#bcd">'+esc(t.after.replace(/[⟦⟧]/g,"").split("·").join(" "))+'</span> → chose <span style="color:#9fb">'+esc(t.chose.replace(/[⟦⟧]/g,"").split("·").join(" "))+'</span>, not '+t.notTaken.map(n=>esc(n.w.replace(/[⟦⟧]/g,"").split("·").join(" "))+" ("+n.s+")").join(", ")+'</div>'
+    }
+   }
+   out.innerHTML=h
   }else{out.innerHTML='<span class=hint>the mind found no words near that — feed it more, or ask nearer to what it knows</span>'}
  }catch(e){out.innerHTML='<span class=hint>(unreachable)</span>'}
 }
