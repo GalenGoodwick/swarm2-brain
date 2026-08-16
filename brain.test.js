@@ -46,7 +46,7 @@ function randVecSpace(nWords, dim, seed) {
   const g = mockProvider({ alpha: [1, 0, 0], beta: [0, 1, 0], gamma: [0, 0, 1], delta: [1, 1, 0] })
   const eye = new Eye('t', g)
   eye.absorb('alpha beta gamma delta')
-  ok('T_seq is consecutive-only (3 edges)', eye.Tseq.size === 3)
+  ok('T_seq is consecutive-only (3 word edges + 1 END edge)', eye.Tseq.size === 4 && eye.Tseq.has('delta ⏹'))
   ok('T_seq has alpha->beta, beta->gamma, gamma->delta',
     eye.Tseq.has('alpha beta') && eye.Tseq.has('beta gamma') && eye.Tseq.has('gamma delta'))
   ok('T_seq has NO skip edge (alpha->gamma absent)', !eye.Tseq.has('alpha gamma'))
@@ -403,6 +403,33 @@ function randVecSpace(nWords, dim, seed) {
   brain.speak('bob', 'sea boat pentarch wave dock')
   brain.speak('bob', 'wave pentarch dock sea boat')
   ok('woven + shared mint becomes crownable', s._crownable('pentarch'))
+}
+
+// ── Gate 24: elected endings — sentences LAND where sentences have actually ended ──
+{
+  const g = mockProvider({ ship: [1, 0, 0], sails: [0.9, 0.4, 0], home: [0.8, 0.5, 0.2], far: [0.2, 0.9, 0.1] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 5; i++) eye.absorb('ship sails home')     // sentences always END at home
+  ok('the ending is threaded as a transition', eye.Tseq.has('home ⏹'))
+  const s = eye.speak(10, 'ship')
+  ok('the walk LANDS at the learned ending (no trail-off past home)', s === 'ship sails home')
+  ok('END token itself is never spoken', !s.includes('⏹'))
+  ok('endings never crystallize into chunks', ![...eye.chunks.keys()].some((k) => k.includes('⏹')))
+}
+
+// ── Gate 25: the centroid-impostor cut — a mean-positioned token cannot win a cell ──
+{
+  // the real pathology: evaluators CLUSTERED (hot topic words), impostor minted at their
+  // mean (residual ≈ 0 — 'pentarch'), real candidate related but distinct.
+  const g = mockProvider({
+    e1: [1, 0.1, 0], e2: [0.9, 0.3, 0], e3: [0.95, 0.15, 0.2],   // clustered evaluators
+    imp: [0.96, 0.18, 0.07],                                      // ≈ their mean (the mint)
+    real: [0.7, 0.7, 0.1],                                        // related but DISTINCT
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  ok('sanity: every evaluator is closer to the impostor', ['e1', 'e2', 'e3'].every((e) => eye.cos(e, 'imp') > eye.cos(e, 'real')))
+  const winner = eye._runCell(['real', 'imp'], ['e1', 'e2', 'e3'])
+  ok('centroid impostor (≈field, no residual) loses the cell to the distinct word', winner === 'real')
 }
 
 console.log(`\n  ${passed} gates passed.`)

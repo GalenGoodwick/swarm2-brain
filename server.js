@@ -172,7 +172,8 @@ setInterval(() => {
     if (!s.Tseq.size) return
     const seed = s.seedTournament()   // who speaks next is ELECTED (frontier + fatigue —
     if (!seed) return                  // structurally anti-recency), not sampled
-    const text = s.speak(12, seed, 1 + (++rot % 7))   // jitter → walks compose across the map
+    const text = s.speak(16, seed, 1 + (++rot % 7))   // jitter → walks compose across the map;
+                                                       // 16 is a backstop — landing is ELECTED (END)
     if (text.split(' ').length < 2 || text === lastThought) return
     lastThought = text
     broadcast({ t: Date.now(), thought: text, seed, champion: s.champion, docked: dockedCount() })

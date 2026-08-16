@@ -32,6 +32,8 @@ export const CAND_POOL = 25       // top candidates (by centrality) entering the
 // node (waves·crash); chunks thread like words, so a "trigram" of chunks spans many real
 // words — context depth grows by hierarchy (the cradle's chunkGraph, ported).
 export const MINT_CROWN_N = 3     // a minted word must be woven from >=3 contexts to be crowned
+export const END = '⏹'            // end-of-sentence token: endings are LEARNED transitions,
+                                  // and stopping is ELECTED (END wins the word tournament)
 export const CHUNK_HOT = 2.6      // T_seq heat at which a bigram crystallizes (~3 recurrences)
 export const CHUNK_MAX_WORDS = 3  // max real words inside one chunk
 export const CHUNK_CAP = 400      // bounded chunk lexicon
@@ -247,6 +249,17 @@ export class Eye {
         this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + 1 / (j - i))
       }
     }
+    // the sentence's ENDING is a transition too — thread last word → END (bigram+trigram)
+    // so the walk can learn where sentences actually land, and elect to stop there.
+    if (words.length) {
+      const last = words[words.length - 1]
+      const ke = key(last, END)
+      this.Tseq.set(ke, (this.Tseq.get(ke) || 0) + 1)
+      if (words.length >= 2) {
+        const k3 = words[words.length - 2] + ' ' + last + ' ' + END
+        this.Tseq2.set(k3, (this.Tseq2.get(k3) || 0) + 1)
+      }
+    }
     this._crystallize()
     this.forget()
     this.champion = this.tournamentChampion()   // forward tournament = who I am
@@ -261,6 +274,7 @@ export class Eye {
     for (const [k, hot] of this.Tseq) {
       if (hot < CHUNK_HOT) continue
       const [a, b] = unkey(k)
+      if (a === END || b === END) continue         // endings never crystallize into chunks
       const ck = a + '·' + b
       if (this.chunks.has(ck)) continue
       if (ck.split('·').length > CHUNK_MAX_WORDS) continue
@@ -415,6 +429,20 @@ export class Eye {
           let d0 = 0; for (let d = 0; d < this.dim; d++) d0 += shifted[d] * cv[d]
           sc[c][e] = d0
         }
+      }
+      // DISTINCTIVENESS (the centroid-impostor cut, m28 orthogonal-complement law): a
+      // candidate is judged on its component DISTINCT from the deliberation field, not its
+      // mean-ness. Minted words are context-MEANS — near-zero residual — so under
+      // consensus-by-proximity they are otherwise unbeatable (how 'pentarch' kept winning:
+      // evaluators shifted toward the mean always find the mean close). Scale every
+      // candidate's scores by its residual norm from the field: nothing distinct → nothing
+      // to elect. Structural balance, not a penalty.
+      for (let c = 0; c < cands.length; c++) {
+        const cv = this.posOf(cands[c]); if (!cv) continue
+        let r = 0
+        for (let d = 0; d < this.dim; d++) { const x = cv[d] - field[d]; r += x * x }
+        const distinct = Math.min(1, Math.sqrt(r))    // centroid ≈ 0, real words ≈ 0.5–1.4
+        for (let e = 0; e < evals.length; e++) sc[c][e] *= distinct
       }
     }
     // vote
@@ -593,8 +621,8 @@ export class Eye {
       if (!cands || !cands.length) cands = adj.get(prev)
       cands = (cands || []).filter(([b]) => FUNCTION_WORDS.has(b) || !usedContent.has(b))
       if (!cands.length) break                         // boundary: no real continuation
-      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter)
-      if (!next) break
+      const next = this._wordTournament(cands, out.slice(-3), evalPool, prev, jitter, step / len)
+      if (!next || next === END) break               // END elected: the sentence LANDS
       out.push(next)
       if (!FUNCTION_WORDS.has(next)) usedContent.add(next)
     }
@@ -605,8 +633,15 @@ export class Eye {
   // one word-position tournament: candidates are the real successors; each is graded by
   // its transition strength AND how well the evaluator panel (shifted toward the current
   // context) agrees it fits here. That agreement is the gradient; the champion is the word.
-  _wordTournament(cands, ctx, evalPool, prev, jitter = 0) {
+  _wordTournament(cands, ctx, evalPool, prev, jitter = 0, progress = 0) {
     if (cands.length === 1) return cands[0][0]
+    // END competes like any candidate, scored by its learned transition heat × progress —
+    // improbable early in the walk, increasingly electable as the sentence matures.
+    let endScore = -Infinity
+    const endCand = cands.find(([c]) => c === END)
+    if (endCand) endScore = Math.log(1 + endCand[1]) * (0.6 + 1.4 * progress)
+    cands = cands.filter(([c]) => c !== END)
+    if (!cands.length) return END
     const cvec = new Float32Array(this.dim); let n = 0
     for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
     if (n) for (let i = 0; i < this.dim; i++) cvec[i] /= n
@@ -636,6 +671,7 @@ export class Eye {
       const s = Math.log(1 + hot) * (fit + 1) + posBonus + wob   // transition × fit + grammar + wobble
       if (s > bestS) { bestS = s; best = c }
     }
+    if (endScore > bestS) return END               // the ending won the tournament
     return best || cands[0][0]
   }
 
