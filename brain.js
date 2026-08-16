@@ -17,7 +17,9 @@ export const DECAY = 0.98
 // over the cap (weight is the recency+warmth proxy). The meta precedent HANDED BACK to
 // an AI stays a bounded top-N SUBSET (see metaPrecedent), so the readback still fits any
 // context even as the brain holds more.
-export const STATE_WINDOW = 5000 // max hot threads PER typed set (identity + voice)
+export const STATE_WINDOW = parseInt(process.env.STATE_WINDOW || '20000') // max hot threads
+// PER typed set (identity + voice). Env-tunable; benchmarked: 20k = 19ms tick / 310MB,
+// 50k = 54ms / 388MB — linear, so raises are safe without code changes.
 export const WINDOW = 2          // T_assoc reach (T_seq is always 1)
 export const EVAL_CAP = 48       // bounded evaluator sample for the reverse walk (perf)
 export const SWARM_DECAY = 0.985 // per swarm-input recency decay of an eye's swarm weight
