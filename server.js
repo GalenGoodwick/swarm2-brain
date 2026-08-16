@@ -117,7 +117,7 @@ function persist() {
       chunks: [...s.chunks].map(([w, v]) => [w, [...v]]),
       contributors: [...s.contributors],
       claims: s.claims, claimSeq: s.claimSeq, groundedEdges: [...s.groundedEdges],
-      entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec] }]),
+      entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec], open: !!e.open, delta: [...(e.delta || [])] }]),
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
     participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0]),
@@ -143,7 +143,8 @@ function restore() {
       s.contributors = new Set(sd.contributors || [])
       s.claims = sd.claims || []; s.claimSeq = sd.claimSeq || 0
       s.groundedEdges = new Set(sd.groundedEdges || [])
-      s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec) }]))
+      s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec), open: !!e.open, delta: new Map(e.delta || []) }]))
+      for (const [id, e] of s.entities) if (!e.open) for (const m of e.members) s.memberOf.set(m, id)
     }
     for (const [id, la] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)

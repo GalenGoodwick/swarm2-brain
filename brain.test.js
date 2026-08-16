@@ -632,4 +632,26 @@ function randVecSpace(nWords, dim, seed) {
   ok('autoConsolidate folds via the universal formula', c && c.method === 'spectral')
 }
 
+// ── Gate 37: WRITE-THROUGH — folds stay writable; no unzip/write/rezip ceremony ──
+{
+  const g = mockProvider({ core: [1, 0, 0], corea: [0.95, 0.3, 0], coreb: [0.9, 0.4, 0.1], outer: [0, 1, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 2; i++) eye.absorb('core corea coreb core corea')
+  eye.absorb('outer core')
+  eye.collapseAround('core', 3)
+  // new input between two folded members: writes INTO the fold, not the live window
+  eye.absorb('core corea coreb')
+  ok('member↔member threads write INTO the fold (window stays condensed)', !eye.Tseq.has('core corea'))
+  const e = eye.entities.get('⟦core⟧')
+  ok('the fold LEARNED it (delta layer warmed)', e.delta.size > 0 && [...e.delta.keys()].some((k) => k.includes('core')))
+  // mixed pairs (member + outsider) still thread live — vocabulary never swallowed
+  eye.absorb('outer corea sky') // 'sky' unknown → dropped; outer↔corea is the mixed pair
+  ok('mixed pairs still thread live', eye.Tassoc.has('outer corea'))
+  // expansion applies snapshot + everything written through, then OPENS the fold
+  eye.expandEntity('⟦core⟧')
+  ok('expand applies the write-through delta', eye.Tseq.has('core corea') || eye.Tassoc.has('core corea'))
+  eye.absorb('core corea coreb')
+  ok('an opened fold resumes LIVE learning (write-through stops)', e.delta.size === 0)
+}
+
 console.log(`\n  ${passed} gates passed.`)

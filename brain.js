@@ -152,7 +152,8 @@ export class Eye {
     this.contributors = new Set() // distinct eyeIds that have ever fed this substrate
     this.chunks = new Map()     // 'a·b' -> Float32Array (crystallized phrase nodes)
     this.outHot = new Map()     // word -> total outgoing T_seq heat (for curiosity)
-    this.entities = new Map()   // ⟦x⟧ -> {cartridge, members, vec} — collapsed subnetworks
+    this.entities = new Map()   // ⟦x⟧ -> {cartridge, members, vec, delta} — collapsed subnetworks
+    this.memberOf = new Map()   // word -> its fold's id (write-through routing)
     this.claims = []            // open claims: found paths awaiting swarm verification
     this.claimSeq = 0
     this.groundedEdges = new Set() // verified-thread keys — the long-term store (decay floor)
@@ -262,8 +263,13 @@ export class Eye {
       const tot = this.outHot.get(a) || 0
       const surprise = tot <= 0 ? 1 : Math.max(0, 1 - prior / tot)
       const cw = (0.4 + 1.2 * surprise) * gain
-      this.Tseq.set(kb, prior + cw)
-      this.outHot.set(a, tot + cw)
+      // WRITE-THROUGH: a thread whose both ends live in the same fold writes INTO the
+      // fold's delta layer — the fold keeps learning; the window stays condensed. No
+      // unzip/write/rezip ceremony, ever.
+      if (this._foldWrite(a, words[i + 1], cw, 'seq')) { /* absorbed by the fold */ } else {
+        this.Tseq.set(kb, prior + cw)
+        this.outHot.set(a, tot + cw)
+      }
       // T_seq2: the trigram a→b→c — conditions the next word on the last TWO words.
       if (i < words.length - 2) {
         const k3 = a + ' ' + words[i + 1] + ' ' + words[i + 2]
@@ -272,6 +278,7 @@ export class Eye {
       // T_assoc: this word to the next WINDOW words, distance-decayed 1/(j-i).
       for (let j = i + 1; j <= Math.min(i + WINDOW, words.length - 1); j++) {
         if (words[j] === a) continue
+        if (this._foldWrite(a, words[j], gain / (j - i), 'thread')) continue
         const ka = key(a, words[j])
         this.Tassoc.set(ka, (this.Tassoc.get(ka) || 0) + gain / (j - i))
       }
@@ -1055,16 +1062,51 @@ export class Eye {
     const pset = new Set()
     for (const m of S) for (const id of this.provenance.get(m) || []) pset.add(id)
     if (pset.size) this.provenance.set(ent, pset)
-    this.entities.set(ent, { cartridge: lines.join('\n'), members: [...S], vec })
+    this.entities.set(ent, { cartridge: lines.join('\n'), members: [...S], vec, delta: new Map() })
+    for (const m of S) this.memberOf.set(m, ent)   // future member↔member threads write through
     this._centroid = null
     return { entity: ent, members: [...S], internalEdges: lines.length }
   }
   // EXPAND — unzip an entity's internals back into the live graph (additive). The entity
   // node remains: both levels of the hierarchy coexist, and the abstraction keeps warming.
+  // write-through: if both words live in the same (closed) fold, the warmth is absorbed
+  // by the fold's delta layer instead of the live window. Returns true if absorbed.
+  // a chunk belongs to a fold iff all its parts do (abstraction layers compose)
+  _foldOf(w) {
+    const direct = this.memberOf.get(w)
+    if (direct) return direct
+    if (w.includes('·')) {
+      const parts = w.split('·')
+      const f = this.memberOf.get(parts[0])
+      if (f && parts.every((p) => this.memberOf.get(p) === f)) return f
+    }
+    return null
+  }
+  _foldWrite(a, b, v, tag) {
+    const ea = this._foldOf(a)
+    if (!ea || ea !== this._foldOf(b)) return false
+    const e = this.entities.get(ea)
+    if (!e) return false
+    if (!e.delta) e.delta = new Map()
+    const k = tag + ': ' + a + ' > ' + b
+    e.delta.set(k, (e.delta.get(k) || 0) + v)
+    return true
+  }
+
   expandEntity(ent) {
     const e = this.entities.get(ent)
     if (!e) return { error: 'unknown entity' }
+    // apply the frozen snapshot PLUS everything written through since the fold
     const r = this.unzipCartridge(e.cartridge)
+    if (e.delta && e.delta.size) {
+      const extra = [...e.delta].map(([k, v]) => k + ' : ' + v.toFixed(2)).join('\n')
+      const r2 = this.unzipCartridge(extra)
+      r.threads += r2.threads
+      e.delta = new Map()
+    }
+    // expansion OPENS the fold: members resume live learning (write-through stops)
+    for (const m of e.members) if (this.memberOf.get(m) === ent) this.memberOf.delete(m)
+    e.open = true
     // gateway bridges: the abstraction connects to its unfolded parts, so walks can
     // route INTO the expanded content through the entity (recall becomes navigable)
     for (const m of e.members) {
