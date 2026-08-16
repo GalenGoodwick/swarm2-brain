@@ -371,7 +371,10 @@ createServer(async (req, res) => {
   }
   if (p === '/entities') {
     const s = brain.substrate
-    return json(res, { entities: [...s.entities.entries()].map(([id, e]) => ({ id, members: e.members, internalEdges: e.cartridge.split('\n').length })) })
+    return json(res, {
+      lastSurvey: s.lastSurvey || null,   // the explorer's most recent calculation (even refusals)
+      entities: [...s.entities.entries()].map(([id, e]) => ({ id, members: e.members, internalEdges: e.cartridge.split('\n').length })),
+    })
   }
 
   // INSPECT — the interrogation right: any node's full anatomy. Entities unzip, chunks

@@ -1071,12 +1071,17 @@ export class Eye {
   // candidate subnetwork is a FORMULA with a calculable worth (modularity × mass); the
   // candidates compete, and a collapse executes only when the champion's math clears the
   // bar. The brain folds itself — consolidation as a habit, not an instruction.
-  autoConsolidate(maxEntities = 60, minModularity = 0.55) {
+  autoConsolidate(maxEntities = 60, minModularity = 0.5) {
     if (this.entities.size >= maxEntities) return null
-    const scores = this.tournamentScores()
-    const seeds = [...scores.entries()]
+    const ranked = [...this.tournamentScores().entries()]
       .filter(([w]) => !FUNCTION_WORDS.has(w) && !w.startsWith('⟦') && !this.entities.has('⟦' + w + '⟧'))
-      .sort((a, b) => b[1] - a[1]).slice(0, 16).map((x) => x[0])
+      .sort((a, b) => b[1] - a[1]).map((x) => x[0])
+    if (ranked.length < 8) return null
+    // STRATIFIED survey — hubs (top of the ranking) have huge boundaries and can never
+    // be modular; dense clusters live in the mid-field. Same law as every election here.
+    const K = Math.min(20, ranked.length)
+    const seeds = []
+    for (let i = 0; i < K; i++) seeds.push(ranked[Math.floor((i * ranked.length) / K)])
     let best = null
     for (const seed of seeds) {
       const g = this._growDense(seed, 10)
@@ -1084,6 +1089,8 @@ export class Eye {
       const worth = g.modularity * Math.log(1 + g.win)   // the formula: cohesion × mass
       if (!best || worth > best.worth) best = { seed, worth, modularity: g.modularity }
     }
+    // the refusal is legible too: every survey records its best candidate's math
+    this.lastSurvey = best ? { seed: best.seed, modularity: +best.modularity.toFixed(2), bar: minModularity } : { none: true }
     if (!best || best.modularity < minModularity) return null   // the math must clear the bar
     const r = this.collapseAround(best.seed, 10)
     if (r.error) return null
