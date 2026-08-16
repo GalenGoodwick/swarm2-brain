@@ -736,7 +736,8 @@ export class Eye {
     for (const w of ctx) { const v = this.posOf(w); if (v) { for (let i = 0; i < this.dim; i++) cvec[i] += v[i]; n++ } }
     let entry = null, bestC = -Infinity
     for (const m of e.members) {
-      if (!adj.has(m) || usedContent.has(m)) continue
+      // an entry must have somewhere to GO — a non-END interior successor
+      if (usedContent.has(m) || !(adj.get(m) || []).some(([b]) => b !== END)) continue
       const v = this.posOf(m); if (!v) continue
       let d = 0
       if (n) for (let i = 0; i < this.dim; i++) d += v[i] * cvec[i]
@@ -1168,7 +1169,10 @@ export class Eye {
     for (const [m, tag] of [[this.Tassoc, 'thread'], [this.Tseq, 'seq']]) {
       for (const [k, v] of [...m.entries()]) {
         const [a, b] = unkey(k)
-        const ain = S.has(a), bin = S.has(b)
+        // a member's ENDING is interior property, not a boundary — zip it with the fold
+        // so expansion restores the word's ability to land its sentences (rerouting END
+        // to the entity stripped endings and caused run-on speech after unzip)
+        const ain = S.has(a), bin = S.has(b) || (b === END && ain)
         if (!ain && !bin) continue
         if (ain && bin) { lines.push(`${tag}: ${a} > ${b} : ${v.toFixed(2)}`); m.delete(k); continue }
         // boundary conservation: inputs/outputs converge on the entity

@@ -738,4 +738,17 @@ function randVecSpace(nWords, dim, seed) {
   ok('grammar hubs refuse to fold', eye.collapseAround('the').error === 'grammar hubs never fold')
 }
 
+// ── Gate 42: folds zip ENDINGS as interior — expansion restores the ability to land ──
+{
+  const g = mockProvider({ ship: [1, 0, 0], sails: [0.9, 0.4, 0], home: [0.8, 0.5, 0.2], far: [0.2, 0.9, 0] })
+  const eye = new Eye('t', g); eye.basin = null
+  for (let i = 0; i < 3; i++) eye.absorb('ship sails home')     // endings learned at 'home'
+  eye.collapseAround('ship', 3)
+  ok('the ending is zipped INTO the fold, not rerouted', eye.entities.get('⟦ship⟧').cartridge.includes('home > ⏹'))
+  eye.expandEntity('⟦ship⟧')
+  ok('expansion restores the landing', (eye.Tseq.get('home ⏹') || 0) > 0)
+  const s = eye.speak(10, 'ship')
+  ok('restored words still land their sentences (no run-on)', s.split(' ').length <= 4)
+}
+
 console.log(`\n  ${passed} gates passed.`)
