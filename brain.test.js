@@ -444,4 +444,24 @@ function randVecSpace(nWords, dim, seed) {
   ok('champion comes from the accumulated mind, not the newest flood', String(eye.champion).startsWith('old'))
 }
 
+// ── Gate 28: SEEK — routes toward the target through real threads, resisting hot distractors ──
+{
+  const g = mockProvider({
+    aleph: [1, 0, 0], bay: [0.8, 0.5, 0], cove: [0.5, 0.8, 0], delta: [0, 1, 0],
+    xray: [1, -0.6, 0],                                  // hot distractor, points AWAY from delta
+    iso: [0, 0, 1],                                      // in vocab but never threaded
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('aleph bay cove delta')                     // the true route, once
+  for (let i = 0; i < 5; i++) eye.absorb('aleph xray')   // the distractor, 5x hotter
+  const r = eye.seek('aleph', 'delta')
+  ok('seek finds a route through real threads', r.found)
+  ok('seek takes the AIMED branch over the 5x-hotter distractor', r.path[1] === 'bay' && !r.path.includes('xray'))
+  // (it legitimately shortcut via the bay↔delta association thread — verify every hop is real)
+  const isEdge = (a, b) => eye.Tseq.has(a + ' ' + b) || eye.Tassoc.has(a + ' ' + b) || eye.Tassoc.has(b + ' ' + a)
+  ok('every hop in the path is a real learned thread', r.path.slice(0, -1).every((w, i) => isEdge(w, r.path[i + 1])))
+  const miss = eye.seek('aleph', 'iso')
+  ok('an unroutable target is honestly not found', miss.found === false)
+}
+
 console.log(`\n  ${passed} gates passed.`)

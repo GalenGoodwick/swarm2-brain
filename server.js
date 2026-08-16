@@ -317,6 +317,14 @@ createServer(async (req, res) => {
     })
   }
 
+  // SEEK — can the brain route from one concept to another through what it knows?
+  if (p === '/seek') {
+    const from = (url.searchParams.get('from') || '').toLowerCase()
+    const to = (url.searchParams.get('to') || '').toLowerCase()
+    if (!from || !to) return json(res, { error: 'seek with ?from=<word>&to=<word>' }, 400)
+    return json(res, brain.substrate.seek(from, to))
+  }
+
   // DRIFT — the words whose meaning has moved most from their anchor in the ONE brain.
   if (p === '/drift') {
     return json(res, { driftedWords: brain.substrate.driftedWords(15) })

@@ -836,6 +836,42 @@ export class Eye {
       .map((x) => x[0])
   }
 
+  // SEEK — pathfinding through meaning: walk the learned thread graph from one concept
+  // TOWARD another. At each junction the successor tournament weighs transition warmth ×
+  // pull toward the target — a preference force like the frontier, never a penalty. The
+  // most primitive act of inference: connecting two ideas through what the brain
+  // actually knows. Function words are excluded as hops (grammar glue, not concepts —
+  // every idea is 2 hops from 'the', which would make all paths trivial).
+  seek(from, to, maxLen = 24) {
+    const tv = this.posOf(to) || this.vecOf(to)
+    if (!tv) return { from, to, found: false, path: [], reason: 'unknown target' }
+    if (!this.has(from)) return { from, to, found: false, path: [], reason: 'unknown start' }
+    const adj = new Map()
+    const addE = (a, b, hot) => { let l = adj.get(a); if (!l) { l = []; adj.set(a, l) } l.push([b, hot]) }
+    for (const [k, hot] of this.Tseq) { const [a, b] = unkey(k); if (b !== END) addE(a, b, hot) }
+    for (const [k, hot] of this.Tassoc) { const [a, b] = unkey(k); addE(a, b, hot); addE(b, a, hot * 0.5) } // identity threads navigable both ways, reverse fainter
+    const path = [from]
+    const used = new Set([from])
+    let cur = from
+    for (let step = 0; step < maxLen; step++) {
+      if (cur === to || cur.split('·').includes(to)) return { from, to, found: true, steps: step, path }
+      const cands = (adj.get(cur) || []).filter(([b]) => !used.has(b) && !FUNCTION_WORDS.has(b))
+      if (!cands.length) return { from, to, found: false, steps: step, path }
+      let best = null, bestS = -Infinity
+      for (const [c, hot] of cands) {
+        if (c === to || c.split('·').includes(to)) { best = c; break }   // arrival wins outright
+        const cv = this.posOf(c); if (!cv) continue
+        let pull = 0
+        for (let i = 0; i < this.dim; i++) pull += cv[i] * tv[i]
+        const s = Math.log(1 + hot) * (1 + pull)     // warmth × target preference
+        if (s > bestS) { bestS = s; best = c }
+      }
+      if (!best) return { from, to, found: false, steps: step, path }
+      path.push(best); used.add(best); cur = best
+    }
+    return { from, to, found: false, steps: maxLen, path }
+  }
+
   // DRIFT — how far a word has UNTETHERED from its given location (GloVe or minted anchor).
   // 0 = still at anchor, 1 = orthogonal. This residual is the amount the word's MEANING has
   // moved inside this brain — the semantic-change signal. Mild untethering is the point.
