@@ -120,7 +120,7 @@ function persist() {
       entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec], open: !!e.open, delta: [...(e.delta || [])] }]),
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
-    participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0, p.spoken ? 1 : 0]),
+    participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0, p.lastFedAt || 0]),
     history,
   }
   try { writeFileSync(STATE_PATH, JSON.stringify(state)) } catch (e) { console.log('persist err', e.message) }
@@ -146,9 +146,8 @@ function restore() {
       s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec), open: !!e.open, delta: new Map(e.delta || []) }]))
       for (const [id, e] of s.entities) if (!e.open) for (const m of e.members) s.memberOf.set(m, id)
     }
-    // legacy entries default to NOT-spoken: real feeders re-mark themselves on their next
-    // message within seconds; test keys stay dark forever. Honesty self-corrects.
-    for (const [id, la, sp] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la, spoken: !!sp })
+    // presence restores as a timestamp; anyone quiet >1h shows undocked until they feed
+    for (const [id, la, ts] of (parsed.participants || [])) brain.participants.set(id, { lastActive: la, lastFedAt: ts || 0 })
     console.log(`restored: ${brain.substrate.Tassoc.size} threads, ${brain.participants.size} participants`)
   } catch (e) { console.log('restore err', e.message) }
 }
