@@ -464,4 +464,26 @@ function randVecSpace(nWords, dim, seed) {
   ok('an unroutable target is honestly not found', miss.found === false)
 }
 
+// ── Gate 29: backtracking search + inference threading ──
+{
+  const g = mockProvider({
+    start: [1, 0, 0], trap: [0.2, 0.95, 0], lure: [0.1, 0.99, 0],   // trap branch AIMS at target...
+    slow: [0.9, 0.3, 0], mid: [0.6, 0.7, 0], goal: [0, 1, 0],       // ...but only slow→mid→goal arrives
+  })
+  const eye = new Eye('t', g); eye.basin = null
+  eye.absorb('start trap lure')          // seductive dead-end (points toward goal, never reaches)
+  eye.absorb('start slow')               // separate sentences → no window edge slow↔goal
+  eye.absorb('slow mid')
+  eye.absorb('mid goal')
+  const r = eye.seek('start', 'goal')
+  ok('backtracking search recovers from the seductive dead-end', r.found && r.path.includes('slow'))
+  const before = eye.Tassoc.get('mid goal') || eye.Tassoc.get('goal mid')
+  const r2 = eye.seek('start', 'goal')
+  const after = eye.Tassoc.get('mid goal') || eye.Tassoc.get('goal mid')
+  ok('a found route warms its own edges (inference threading)', after > before)
+  const failEdges = eye.Tassoc.size
+  eye.seek('start', 'iso')               // unknown target — must change nothing
+  ok('failed searches change nothing', eye.Tassoc.size === failEdges)
+}
+
 console.log(`\n  ${passed} gates passed.`)

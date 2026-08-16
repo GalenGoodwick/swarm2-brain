@@ -842,34 +842,50 @@ export class Eye {
   // most primitive act of inference: connecting two ideas through what the brain
   // actually knows. Function words are excluded as hops (grammar glue, not concepts —
   // every idea is 2 hops from 'the', which would make all paths trivial).
-  seek(from, to, maxLen = 24) {
+  seek(from, to, budget = 300) {
     const tv = this.posOf(to) || this.vecOf(to)
     if (!tv) return { from, to, found: false, path: [], reason: 'unknown target' }
     if (!this.has(from)) return { from, to, found: false, path: [], reason: 'unknown start' }
+    const isFn = (w) => w.split('·').every((p) => FUNCTION_WORDS.has(p))   // incl. fn-word chunks
     const adj = new Map()
     const addE = (a, b, hot) => { let l = adj.get(a); if (!l) { l = []; adj.set(a, l) } l.push([b, hot]) }
     for (const [k, hot] of this.Tseq) { const [a, b] = unkey(k); if (b !== END) addE(a, b, hot) }
     for (const [k, hot] of this.Tassoc) { const [a, b] = unkey(k); addE(a, b, hot); addE(b, a, hot * 0.5) } // identity threads navigable both ways, reverse fainter
-    const path = [from]
-    const used = new Set([from])
-    let cur = from
-    for (let step = 0; step < maxLen; step++) {
-      if (cur === to || cur.split('·').includes(to)) return { from, to, found: true, steps: step, path }
-      const cands = (adj.get(cur) || []).filter(([b]) => !used.has(b) && !FUNCTION_WORDS.has(b))
-      if (!cands.length) return { from, to, found: false, steps: step, path }
-      let best = null, bestS = -Infinity
-      for (const [c, hot] of cands) {
-        if (c === to || c.split('·').includes(to)) { best = c; break }   // arrival wins outright
-        const cv = this.posOf(c); if (!cv) continue
-        let pull = 0
-        for (let i = 0; i < this.dim; i++) pull += cv[i] * tv[i]
-        const s = Math.log(1 + hot) * (1 + pull)     // warmth × target preference
-        if (s > bestS) { bestS = s; best = c }
+    // BEST-FIRST SEARCH with backtracking: a dead-end retreats — the whole frontier stays
+    // alive, ordered by warmth × pull-toward-target. A stroll becomes a search.
+    const pull = (w) => { const v = this.posOf(w); if (!v) return -1; let d = 0; for (let i = 0; i < this.dim; i++) d += v[i] * tv[i]; return d }
+    const frontier = [{ w: from, path: [from], s: Infinity }]
+    const seen = new Set([from])
+    let expanded = 0
+    while (frontier.length && expanded < budget) {
+      frontier.sort((a, b) => b.s - a.s)
+      const node = frontier.shift()
+      expanded++
+      if (node.w === to || node.w.split('·').includes(to)) {
+        this._reinforcePath(node.path)                 // inference threading (see below)
+        return { from, to, found: true, steps: node.path.length - 1, expanded, path: node.path }
       }
-      if (!best) return { from, to, found: false, steps: step, path }
-      path.push(best); used.add(best); cur = best
+      if (node.path.length > 24) continue
+      for (const [c, hot] of adj.get(node.w) || []) {
+        if (seen.has(c) || isFn(c)) continue
+        seen.add(c)
+        frontier.push({ w: c, path: [...node.path, c], s: Math.log(1 + hot) * (1 + pull(c)) })
+      }
     }
-    return { from, to, found: false, steps: maxLen, path }
+    return { from, to, found: false, expanded, path: [] }
+  }
+
+  // INFERENCE THREADING — a found route warms its own edges (identity layer). The brain
+  // learns from its OWN successful searches: connections proven reachable become more
+  // reachable. Reinforcement only — failed searches change nothing.
+  _reinforcePath(path) {
+    for (let i = 0; i < path.length - 1; i++) {
+      const k = key(path[i], path[i + 1])
+      const kr = key(path[i + 1], path[i])
+      if (this.Tassoc.has(k)) this.Tassoc.set(k, this.Tassoc.get(k) + 0.5)
+      else if (this.Tassoc.has(kr)) this.Tassoc.set(kr, this.Tassoc.get(kr) + 0.5)
+      else this.Tassoc.set(k, 0.5)
+    }
   }
 
   // DRIFT — how far a word has UNTETHERED from its given location (GloVe or minted anchor).
