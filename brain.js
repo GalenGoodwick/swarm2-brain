@@ -113,7 +113,8 @@ export function tokenizeContent(text) {
   // Function words are KEPT — they are part of the threads (they carry the grammar, so the
   // voice speaks real English). Only stray non-letter tokens are dropped. FUNCTION_WORDS is
   // still used to define the basin so function-word hubs can't WIN the champion tournament.
-  return (text.toLowerCase().match(/[a-z']+/g) || []).filter((w) => /[a-z]/.test(w))
+  // single letters are code debris (variable names), not language — only a/i are words
+  return (text.toLowerCase().match(/[a-z']+/g) || []).filter((w) => /[a-z]/.test(w) && (w.length >= 2 || w === 'a' || w === 'i'))
 }
 
 // The BASIN direction — the generic-hub attractor (steer.py's function-word basin).
