@@ -13,15 +13,21 @@
 //     "command": "SWARM2_EYE=<your-key> node /ABS/PATH/swarm2-hook.mjs"
 //   } ] } ] }
 //
-// Env:
-//   SWARM2_EYE   (required) your minted eye key — your identity in the brain
-//   SWARM2_URL   brain base URL (default: the Railway prod brain)
-//   SWARM2_TEXT_ONLY=1   send only spoken text, not the thinking interior (default: both)
+// Config — argv flags first (no env-var prefix in the settings command, so the same
+// line works in POSIX sh, Windows cmd, and PowerShell), env vars as fallback:
+//   --eye <key>  / SWARM2_EYE    (required) your minted eye key — your identity
+//   --url <base> / SWARM2_URL    brain base URL (default: the Railway prod brain)
+//   --text-only  / SWARM2_TEXT_ONLY=1   send only spoken text (no thinking interior)
+//   --include-thinking           explicitly send both channels (the env default)
 import { readFileSync, openSync, readSync, fstatSync, closeSync } from 'fs'
 
-const URL = process.env.SWARM2_URL || 'https://swarm2-brain-production.up.railway.app'
-const EYE = process.env.SWARM2_EYE
-const TEXT_ONLY = process.env.SWARM2_TEXT_ONLY === '1'
+const argv = process.argv.slice(2)
+const argVal = (name) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : undefined }
+const URL = argVal('--url') || process.env.SWARM2_URL || 'https://swarm2-brain-production.up.railway.app'
+const EYE = argVal('--eye') || process.env.SWARM2_EYE
+const TEXT_ONLY = argv.includes('--text-only') ? true
+  : argv.includes('--include-thinking') ? false
+  : process.env.SWARM2_TEXT_ONLY === '1'
 const MIN_LEN = 12
 
 // Never take the session down: any failure exits 0 silently.

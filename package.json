@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "type": "module",
   "description": "swarm2 — the live pristine-GloVe thread brain (rung 1)",
+  "bin": {
+    "swarm2-autofeed": "./install-autofeed.mjs"
+  },
   "scripts": {
-    "test": "node brain.test.js",
+    "test": "node brain.test.js && node autofeed.test.js",
+    "test:autofeed": "node autofeed.test.js",
     "pack": "node pack-glove.js",
     "start": "node server.js"
   }
