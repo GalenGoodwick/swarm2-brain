@@ -1,0 +1,7 @@
+{"exp":"1","mode":"coupled","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":3,"claimsGrounded":1,"groundRate":0.33,"groundedTotal":9,"landedRate":0.53,"lensCoherence":0.949,"champSwitchRate":0.99,"selfTargetingRate":0.29}}
+{"exp":"1","mode":"lesion","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":3,"claimsGrounded":1,"groundRate":0.33,"groundedTotal":9,"landedRate":0.53,"lensCoherence":0.949,"champSwitchRate":0.99,"selfTargetingRate":0.05}}
+{"exp":"1","mode":"forgery","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":8,"claimsGrounded":2,"groundRate":0.25,"groundedTotal":11,"landedRate":0.6,"lensCoherence":0.956,"champSwitchRate":0.97,"selfTargetingRate":0.25}}
+{"exp":"2","mode":"coupled","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":3,"claimsGrounded":1,"groundRate":0.33,"groundedTotal":9,"landedRate":0.54,"integrationDelta":-0.0015,"askSuccess":0.05}}
+{"exp":"2","mode":"random","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":5,"claimsGrounded":1,"groundRate":0.2,"groundedTotal":9,"landedRate":0.49,"integrationDelta":0.0027,"askSuccess":0.08}}
+{"exp":"2","mode":"forgery","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":0,"claimsGrounded":1,"groundRate":0,"groundedTotal":9,"landedRate":0.51,"integrationDelta":-0.0016,"askSuccess":0}}
+{"exp":"2","mode":"none","lived":{"grounded":8,"groundRate":0.1},"test":{"claimsOpened":0,"claimsGrounded":1,"groundRate":0,"groundedTotal":9,"landedRate":0.51,"integrationDelta":null,"askSuccess":null}}
