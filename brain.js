@@ -71,7 +71,7 @@ export const WALK_LEN = 12
 // collapsing to pure thread-frequency centrality.
 export const LR_HEBB = 0.02      // per-tick thread-pull cap (step = LR_HEBB * hot/(1+hot))
 export const SPRING = 0.02       // per-tick relaxation toward the pristine anchor
-export const BRAIN_VERSION = 'delta-1'   // overlay folding: whole above parts, survival by use
+export const BRAIN_VERSION = 'delta-2'   // overlay folding: whole above parts, survival by use
 
 export const FUNCTION_WORDS = new Set([
   'the', 'and', 'that', 'this', 'you', 'your', 'what', 'when', 'where', 'with',
@@ -519,6 +519,39 @@ export class Eye {
     }
     return current[0] || null
   }
+  // THE DELTA VOICE — decompress the champion into a sentence where each next word is
+  // judged by grammar(T_seq hot) × δ, δ = residual from the SENTENCE'S OWN running mean.
+  // Speaks avoids language's generic center (basin); this avoids ITS OWN center, so it
+  // never circles back — an always-advancing thought. Read-only; the delta of the crown,
+  // spoken.
+  deltaSpeak(len = WALK_LEN, seed = this.champion) {
+    if (!seed) return ''
+    const adj = new Map()
+    for (const [k, hot] of this.Tseq) { const [a, b] = unkey(k); let l = adj.get(a); if (!l) { l = []; adj.set(a, l) } l.push([b, hot]) }
+    const path = [seed], used = new Set(path)
+    const run = new Float32Array(this.dim)
+    const add = (w) => { const v = this.posOf(w); if (v) for (let d = 0; d < this.dim; d++) run[d] += v[d] }
+    add(seed)
+    let cur = seed
+    for (let step = 0; step < len; step++) {
+      const cell = (adj.get(cur) || []).filter(([b]) => !used.has(b))
+      if (!cell.length) break
+      const c = new Float32Array(this.dim); let n = 0
+      for (let d = 0; d < this.dim; d++) { c[d] = run[d] / path.length; n += c[d] * c[d] }
+      n = Math.sqrt(n) || 1; for (let d = 0; d < this.dim; d++) c[d] /= n
+      let best = null, bs = -Infinity
+      for (const [cand, hot] of cell) {
+        const v = this.posOf(cand); if (!v) continue
+        let r = 0; for (let d = 0; d < this.dim; d++) { const x = v[d] - c[d]; r += x * x }
+        const s = hot * Math.min(1, Math.sqrt(r))
+        if (s > bs) { bs = s; best = cand }
+      }
+      if (best == null) break
+      path.push(best); used.add(best); add(best); cur = best
+    }
+    return path.map((w) => w.replace(/[⟦⟧]/g, '').split('·').join(' ')).join(' ')
+  }
+
   // EXPLAIN — re-run the crown instrumented, exposing delta (residual from the
   // deliberation field) per candidate and whether it survived or was cut as a centroid.
   // Deterministic given state, so it reproduces the live champion. Read-only.

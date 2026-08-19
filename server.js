@@ -590,7 +590,7 @@ createServer(async (req, res) => {
     // delta high = distinct enough to reign. The champion is the survivor.
     const s = brain.substrate
     const ex = s.explainChampion()
-    return json(res, { champion: ex.champion, candidates: ex.candidates, floor: 'delta below ~0.15 = cut as the mean' })
+    return json(res, { champion: ex.champion, candidates: ex.candidates, spoken: s.deltaSpeak(16), floor: 'delta below ~0.15 = cut as the mean' })
   }
 
   if (p === '/entities') {
@@ -731,6 +731,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 <section id=delta class=panel>
  <div class=note><b>The distinctiveness cut, live.</b> To crown a champion, evaluators deliberate toward a shared center — then each candidate is judged not on how <i>close</i> it sits to that consensus, but on its <b>residual</b> from it: the part of it the room did not already contain. A word that <i>is</i> the average (a centroid impostor) has delta ≈ 0 and cannot reign, no matter how agreeable. You reign for what you add, not for being the mean. Balance, not penalty — the blur isn't punished, it's simply found to be empty.</div>
  <p class=hint>δ = ‖position − deliberation field‖ · <button onclick=loadDelta()>refresh</button> · <span id=deltachamp class=hint></span></p>
+ <div id=deltaspoken style="margin:6px 0 14px;padding:10px 12px;border-left:2px solid #7cf;background:#0d1420;color:#bcd;font-style:italic"></div>
  <div id=deltarows></div>
 </section>
 
@@ -841,6 +842,7 @@ document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
 async function loadDelta(){
  try{const d=await(await fetch('/delta')).json()
   $('deltachamp').innerHTML='champion (survivor): <b style="color:#adf">'+esc(d.champion||'—')+'</b>'
+  $('deltaspoken').innerHTML=d.spoken?('the delta voice — a sentence that never returns to its own mean:<br>“'+esc(d.spoken)+'”'):''
   const cs=d.candidates||[]
   if(!cs.length){$('deltarows').innerHTML='<p class=hint>(tournament forming — refresh in a moment)</p>';return}
   const mx=Math.max.apply(null,cs.map(c=>c.delta).concat([1]))
