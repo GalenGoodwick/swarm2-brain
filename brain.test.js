@@ -827,4 +827,50 @@ function randVecSpace(nWords, dim, seed) {
   ok('a different mind crossing resonates harder than the same mind returning', crossGain > sameGain * 1.5)
 }
 
+
+// ─── OVERLAY FOLDING — the whole above the parts (Galen's garden law, Aug 18) ───────
+{
+  // formation: entity added, substrate BYTE-UNTOUCHED (parts never at stake)
+  const g = mockProvider({ oak: [1, 0, 0], elm: [0.95, 0.1, 0], fir: [0.9, 0.2, 0.05], ash: [0.92, 0.05, 0.1], sky: [0, 1, 0], sea: [0, 0.9, 0.3] })
+  const eye = new Eye('t', g)
+  for (let i = 0; i < 4; i++) { eye.absorb('oak elm fir ash'); eye.absorb('elm oak ash fir'); eye.absorb('sky oak sea') }
+  const seqBefore = JSON.stringify([...eye.Tseq].sort())
+  const interiorBefore = eye.Tassoc.get('elm oak')
+  const r = eye.overlayFold('oak', 6)
+  ok('overlay forms around a dense region', !!r.entity && r.overlay === true)
+  ok('T_seq is byte-identical after the fold (voice cannot be harmed)', JSON.stringify([...eye.Tseq].sort()) === seqBefore)
+  ok('interior threads keep their exact heat (nothing deleted, nothing rerouted)', eye.Tassoc.get('elm oak') === interiorBefore)
+  ok('the whole has boundary threads of its own', [...eye.Tassoc.keys()].some((k) => k.includes(r.entity)))
+  ok('gateway bridges: the whole is examinable into its parts', (eye.Tassoc.get(r.entity + ' oak') || eye.Tassoc.get('oak ' + r.entity) || 0) >= 0.6)
+
+  // write-through: touching a part warms the whole
+  const entEdges = () => { let h = 0; for (const [k, v] of eye.Tassoc) if (k.includes(r.entity)) h += v; return h }
+  const before = entEdges()
+  eye.absorb('oak sea sky')
+  ok('touching a part warms the whole (summed view stays current)', entEdges() > before)
+}
+{
+  // disuse dissolves the whole; the parts remain intact
+  const g = mockProvider({ oak: [1, 0, 0], elm: [0.95, 0.1, 0], fir: [0.9, 0.2, 0.05], ash: [0.92, 0.05, 0.1], noise: [0, 1, 0], blur: [0, 0.9, 0.3] })
+  const eye = new Eye('t', g)
+  for (let i = 0; i < 4; i++) eye.absorb('oak elm fir ash')
+  const r = eye.overlayFold('oak', 6)
+  ok('overlay formed for the disuse test', !!r.entity)
+  for (let i = 0; i < 260; i++) eye.absorb('noise blur noise blur')
+  ok('a whole no use has warmed dissolves past probation', !eye.entities.has(r.entity))
+  ok('the parts survive their whole (thread intact after dissolution)', (eye.Tseq.get('oak elm') || eye.Tassoc.get('elm oak') || 0) > 0 || eye.has('oak'))
+  ok('the dissolution is a legible ledger event', eye.foldLog.some((f) => f.ent === r.entity && f.why === 'disuse'))
+}
+{
+  // use keeps the whole alive past probation
+  const g = mockProvider({ oak: [1, 0, 0], elm: [0.95, 0.1, 0], fir: [0.9, 0.2, 0.05], ash: [0.92, 0.05, 0.1], rain: [0, 1, 0] })
+  const eye = new Eye('t', g)
+  for (let i = 0; i < 4; i++) eye.absorb('oak elm fir ash')
+  const r = eye.overlayFold('oak', 6)
+  for (let i = 0; i < 260; i++) eye.absorb('oak rain elm')     // parts stay in use -> whole stays warm
+  ok('a whole kept in use survives probation', eye.entities.has(r.entity))
+  ok('expand on an overlay = dissolve (parts were always live)', eye.expandEntity(r.entity).dissolved === r.entity)
+  ok('members released on dissolution', !eye.memberOverlay.has('oak'))
+}
+
 console.log(`\n  ${passed} gates passed.`)

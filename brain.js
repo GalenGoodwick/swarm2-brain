@@ -54,6 +54,8 @@ export const CLAIMS_MAX = 40      // open-claims ring buffer
 export const GROUNDED_MAX = 2000  // bounded long-term store
 export const END = '⏹'            // end-of-sentence token: endings are LEARNED transitions,
                                   // and stopping is ELECTED (END wins the word tournament)
+export const OVERLAY_PROBATION = 250  // absorbs before an overlay must justify itself by use
+export const OVERLAY_FLOOR = 0.4      // total entity-thread heat below which a disused overlay dissolves
 export const CHUNK_HOT = 2.6      // T_seq heat at which a bigram crystallizes (~3 recurrences)
 export const CHUNK_MAX_WORDS = 3  // max real words inside one chunk
 export const CHUNK_CAP = 400      // bounded chunk lexicon
@@ -163,6 +165,9 @@ export class Eye {
     this.incident = new Map()   // word -> Set of T_assoc keys through it (superposition index)
     this.entities = new Map()   // ⟦x⟧ -> {cartridge, members, vec, delta} — collapsed subnetworks
     this.memberOf = new Map()   // word -> its fold's id (write-through routing)
+    this.memberOverlay = new Map()  // word -> its OVERLAY entity (whole above parts; parts stay live)
+    this.absorbCount = 0
+    this.foldLog = []           // bounded ledger of overlay formations/dissolutions (legible memory edits)
     this.claims = []            // open claims: found paths awaiting swarm verification
     this.claimSeq = 0
     this.groundedEdges = new Set() // verified-thread keys — the long-term store (decay floor)
@@ -246,6 +251,7 @@ export class Eye {
   // Absorb one sentence: mint OOV, lay T_seq (consecutive) + T_assoc (windowed).
   absorb(text, eyeId = null, gain = 1) {   // gain>1 = a SEAM route (corrections thread heavier)
     this.tick++
+    this.absorbCount++
     const raw = this._resolve(tokenizeContent(text))
     // capture cross-mind crossings BEFORE stamping provenance: a word this eye has never
     // carried, that another mind has, is a junction where two minds meet
@@ -304,6 +310,12 @@ export class Eye {
         if (ea && eb && ea !== eb) { const ke = key(ea, eb); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
         else if (ea && !eb) { const ke = key(ea, words[j]); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
         else if (eb && !ea) { const ke = key(a, eb); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.5 * v) }
+        // OVERLAY write-through: touching a part warms its whole — the summed view stays
+        // current, and use is what keeps an overlay alive (survival gated by service)
+        const oa = this.memberOverlay.get(a), ob = this.memberOverlay.get(words[j])
+        if (oa && ob && oa !== ob) { const ke = key(oa, ob); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.3 * v) }
+        else if (oa && !ob) { const ke = key(oa, words[j]); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.3 * v) }
+        else if (ob && !oa) { const ke = key(a, ob); this.Tassoc.set(ke, (this.Tassoc.get(ke) || 0) + 0.3 * v) }
       }
     }
     // the sentence's ENDING is a transition too — thread last word → END (bigram+trigram)
@@ -333,6 +345,7 @@ export class Eye {
     }
     this._crystallize()
     this.forget()
+    this._overlaySweep()
     this.champion = this.tournamentChampion()   // forward tournament = who I am
     this._centroid = null
     return { words, champion: this.champion }
@@ -1248,6 +1261,70 @@ export class Eye {
     this._centroid = null
     return { entity: ent, members: [...S], internalEdges: lines.length }
   }
+  // OVERLAY FOLD — the whole is added ABOVE the parts; nothing deleted, nothing rerouted.
+  // (Galen's law, Aug 18: "a memory of a garden is whole yet can still be examined in its
+  // parts.") Entity edges are ordinary T_assoc threads, so seek rides the concept layer
+  // natively; T_seq is untouched, so the voice cannot be harmed by construction. Formation
+  // is a bet scored by the future: past probation, a whole no use has warmed dissolves by
+  // ordinary decay — and the parts were never at stake.
+  overlayFold(seed, maxSize = 10) {
+    if (FUNCTION_WORDS.has(seed)) return { error: 'grammar hubs never fold' }
+    const ent = '⟦' + seed + '⟧'
+    if (!this.has(seed) || this.entities.has(ent)) return { error: 'bad seed' }
+    const { S } = this._growDense(seed, maxSize)
+    if (S.size < 3) return { error: 'no dense subnetwork around seed' }
+    const sums = new Map()
+    for (const m of [this.Tassoc, this.Tseq]) {
+      for (const [k, v] of m) {
+        const [a, b] = unkey(k)
+        if (b === END) continue
+        const ain = S.has(a), bin = S.has(b)
+        if (ain === bin) continue
+        const nk = ain ? key(ent, b) : key(a, ent)
+        sums.set(nk, (sums.get(nk) || 0) + v)
+      }
+    }
+    for (const [nk, v] of sums) this.Tassoc.set(nk, (this.Tassoc.get(nk) || 0) + Math.min(v, 3))
+    // gateway bridges: the whole is examinable into its parts, in both directions
+    for (const m of S) { const k = key(ent, m); this.Tassoc.set(k, Math.max(this.Tassoc.get(k) || 0, 0.6)) }
+    const wTo = (w) => { let t = 0; for (const m2 of S) t += (this.Tassoc.get(key(w, m2)) || 0) + (this.Tseq.get(key(w, m2)) || 0); return t }
+    const vec = new Float32Array(this.dim); let tw = 0
+    for (const m of S) { const v = this.posOf(m); if (!v) continue; const w = wTo(m) || 1; for (let d = 0; d < this.dim; d++) vec[d] += w * v[d]; tw += w }
+    let n = 0; for (let d = 0; d < this.dim; d++) { vec[d] /= (tw || 1); n += vec[d] * vec[d] }
+    n = Math.sqrt(n) || 1; for (let d = 0; d < this.dim; d++) vec[d] /= n
+    const pset = new Set()
+    for (const m of S) for (const id of this.provenance.get(m) || []) pset.add(id)
+    if (pset.size) this.provenance.set(ent, pset)
+    this.entities.set(ent, { overlay: true, members: [...S], vec, born: this.absorbCount, cartridge: '' })
+    for (const m of S) this.memberOverlay.set(m, ent)
+    this.foldLog.push({ ent, why: 'formed', at: this.absorbCount })
+    if (this.foldLog.length > 50) this.foldLog.shift()
+    this._centroid = null
+    return { entity: ent, overlay: true, members: [...S], boundaryThreads: sums.size }
+  }
+  _overlaySweep() {
+    for (const [ent, e] of this.entities) {
+      if (!e.overlay) continue
+      if (this.absorbCount - (e.born || 0) < OVERLAY_PROBATION) continue
+      let heat = 0
+      const inc = this.incident.get(ent)
+      if (inc) for (const k of inc) heat += this.Tassoc.get(k) || 0
+      if (heat < OVERLAY_FLOOR) this.dissolveOverlay(ent, 'disuse')
+    }
+  }
+  dissolveOverlay(ent, why = 'manual') {
+    const e = this.entities.get(ent)
+    if (!e || !e.overlay) return { error: 'not an overlay entity' }
+    for (const k of [...this.Tassoc.keys()]) { const [a, b] = unkey(k); if (a === ent || b === ent) this.Tassoc.delete(k) }
+    for (const m of e.members) if (this.memberOverlay.get(m) === ent) this.memberOverlay.delete(m)
+    this.entities.delete(ent)
+    this.provenance.delete(ent)
+    this.incident.delete(ent)
+    this.foldLog.push({ ent, why, at: this.absorbCount })
+    if (this.foldLog.length > 50) this.foldLog.shift()
+    return { dissolved: ent, why }
+  }
+
   // EXPAND — unzip an entity's internals back into the live graph (additive). The entity
   // node remains: both levels of the hierarchy coexist, and the abstraction keeps warming.
   // write-through: if both words live in the same (closed) fold, the warmth is absorbed
@@ -1278,6 +1355,7 @@ export class Eye {
   expandEntity(ent) {
     const e = this.entities.get(ent)
     if (!e) return { error: 'unknown entity' }
+    if (e.overlay) return this.dissolveOverlay(ent, 'expanded')   // parts are already live
     // apply the frozen snapshot PLUS everything written through since the fold
     const r = this.unzipCartridge(e.cartridge)
     if (e.delta && e.delta.size) {

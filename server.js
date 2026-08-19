@@ -208,7 +208,8 @@ function persist() {
       chunks: [...s.chunks].map(([w, v]) => [w, [...v]]),
       contributors: [...s.contributors],
       claims: s.claims, claimSeq: s.claimSeq, groundedEdges: [...s.groundedEdges],
-      entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec], open: !!e.open, delta: [...(e.delta || [])] }]),
+      entities: [...s.entities].map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: [...e.vec], open: !!e.open, overlay: !!e.overlay, born: e.born || 0, delta: [...(e.delta || [])] }]),
+      absorbCount: s.absorbCount, foldLog: s.foldLog,
       // pos (living positions) NOT persisted — ephemeral, the spring re-seeds from GloVe.
     },
     participants: [...brain.participants].map(([id, p]) => [id, p.lastActive || 0, p.lastFedAt || 0, p.sentences || 0, p.label || null, p.authorized || 0]),
@@ -234,8 +235,11 @@ function restore() {
       s.contributors = new Set(sd.contributors || [])
       s.claims = sd.claims || []; s.claimSeq = sd.claimSeq || 0
       s.groundedEdges = new Set(sd.groundedEdges || [])
-      s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec), open: !!e.open, delta: new Map(e.delta || []) }]))
-      for (const [id, e] of s.entities) if (!e.open) for (const m of e.members) s.memberOf.set(m, id)
+      s.entities = new Map((sd.entities || []).map(([id, e]) => [id, { cartridge: e.cartridge, members: e.members, vec: Float32Array.from(e.vec), open: !!e.open, overlay: !!e.overlay, born: e.born || 0, delta: new Map(e.delta || []) }]))
+      for (const [id, e] of s.entities) if (!e.open && !e.overlay) for (const m of e.members) s.memberOf.set(m, id)
+      for (const [id, e] of s.entities) if (e.overlay) for (const m of e.members) s.memberOverlay.set(m, id)
+      s.absorbCount = sd.absorbCount || 0
+      s.foldLog = sd.foldLog || []
     }
     // presence restores as a timestamp; anyone quiet >1h shows undocked until they feed
     // grandfather: eyes that fed before the consent gate existed keep working; new eyes must authorize
@@ -572,7 +576,7 @@ createServer(async (req, res) => {
     const { eye, around, size } = await body(req)
     if (!eye || !around) return json(res, { error: 'eye (your key) and around (seed word) required' }, 400)
     if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
-    return json(res, brain.substrate.collapseAround(String(around).toLowerCase(), Math.min(16, parseInt(size) || 10)))
+    return json(res, brain.substrate.overlayFold(String(around).toLowerCase(), Math.min(16, parseInt(size) || 10)))
   }
   if (p === '/expand' && req.method === 'POST') {
     const { eye, entity } = await body(req)
