@@ -1,0 +1,5 @@
+fixed: content-word target + pre-flight + lens instrument
+{"gain":0,"driven":"cooking","control":"shared","drive":{"seeksFound":13,"crownsT":0,"rankAtEnd":477},"remanence":{"crownsT":0,"crownsC":0,"lensT":0,"lensC":0,"rankCurve":{"t+31":659,"t+61":792,"t+120":988},"meanReign":1},"health":{"lensCoherence":0.964,"landedRate":0.57}}
+{"gain":1.5,"driven":"cooking","control":"shared","drive":{"seeksFound":17,"crownsT":0,"rankAtEnd":259},"remanence":{"crownsT":0,"crownsC":1,"lensT":0,"lensC":0,"rankCurve":{"t+31":374,"t+61":492,"t+120":782},"meanReign":1},"health":{"lensCoherence":0.956,"landedRate":0.42}}
+{"gain":3,"driven":"cooking","control":"shared","drive":{"seeksFound":18,"crownsT":0,"rankAtEnd":217},"remanence":{"crownsT":0,"crownsC":0,"lensT":0,"lensC":0,"rankCurve":{"t+31":311,"t+61":414,"t+120":695},"meanReign":1},"health":{"lensCoherence":0.945,"landedRate":0.42}}
+{"gain":6,"driven":"cooking","control":"shared","drive":{"seeksFound":15,"crownsT":0,"rankAtEnd":193},"remanence":{"crownsT":0,"crownsC":0,"lensT":0,"lensC":0,"rankCurve":{"t+31":266,"t+61":350,"t+120":647},"meanReign":1},"health":{"lensCoherence":0.968,"landedRate":0.47}}
