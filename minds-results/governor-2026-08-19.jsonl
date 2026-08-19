@@ -1,0 +1,151 @@
+{
+ "mode": "fixed",
+ "finalPredictHit": 0.298,
+ "finalLanded": 0.38,
+ "proposals": 0,
+ "adoptions": 0,
+ "finalDials": {
+  "curiosityBase": 0.4,
+  "curiositySpan": 1.2,
+  "chunkHot": 2.6,
+  "seekGain": 0.5,
+  "overlayFloor": 0.4
+ },
+ "ledger": []
+}
+{
+ "mode": "governed",
+ "finalPredictHit": 0.292,
+ "finalLanded": 0.46,
+ "proposals": 16,
+ "adoptions": 3,
+ "finalDials": {
+  "curiosityBase": 0.4,
+  "curiositySpan": 1.6,
+  "chunkHot": 2.6,
+  "seekGain": 0.5,
+  "overlayFloor": 0.4
+ },
+ "ledger": [
+  {
+   "t": 320,
+   "dial": "curiositySpan",
+   "from": 1.2,
+   "to": 1,
+   "verdict": "reverted",
+   "hit": 0.075
+  },
+  {
+   "t": 380,
+   "dial": "chunkHot",
+   "from": 2.6,
+   "to": 2.9,
+   "verdict": "reverted",
+   "hit": 0.282
+  },
+  {
+   "t": 440,
+   "dial": "seekGain",
+   "from": 0.5,
+   "to": 0.3,
+   "verdict": "reverted",
+   "hit": 0.318
+  },
+  {
+   "t": 500,
+   "dial": "overlayFloor",
+   "from": 0.4,
+   "to": 0.5,
+   "verdict": "reverted",
+   "hit": 0.315
+  },
+  {
+   "t": 560,
+   "dial": "curiosityBase",
+   "from": 0.4,
+   "to": 0.3,
+   "verdict": "reverted",
+   "hit": 0.297
+  },
+  {
+   "t": 620,
+   "dial": "curiositySpan",
+   "from": 1.2,
+   "to": 1.4,
+   "verdict": "adopted",
+   "hit": 0.318
+  },
+  {
+   "t": 680,
+   "dial": "chunkHot",
+   "from": 2.6,
+   "to": 2.3,
+   "verdict": "adopted",
+   "hit": 0.327
+  },
+  {
+   "t": 740,
+   "dial": "seekGain",
+   "from": 0.5,
+   "to": 0.7,
+   "verdict": "reverted",
+   "hit": 0.304
+  },
+  {
+   "t": 800,
+   "dial": "overlayFloor",
+   "from": 0.4,
+   "to": 0.3,
+   "verdict": "reverted",
+   "hit": 0.302
+  },
+  {
+   "t": 860,
+   "dial": "curiosityBase",
+   "from": 0.4,
+   "to": 0.5,
+   "verdict": "reverted",
+   "hit": 0.283
+  },
+  {
+   "t": 920,
+   "dial": "curiositySpan",
+   "from": 1.4,
+   "to": 1.2,
+   "verdict": "reverted",
+   "hit": 0.302
+  },
+  {
+   "t": 980,
+   "dial": "chunkHot",
+   "from": 2.3,
+   "to": 2.6,
+   "verdict": "adopted",
+   "hit": 0.336
+  },
+  {
+   "t": 1040,
+   "dial": "seekGain",
+   "from": 0.5,
+   "to": 0.3,
+   "verdict": "reverted",
+   "hit": 0.259
+  },
+  {
+   "t": 1100,
+   "dial": "overlayFloor",
+   "from": 0.4,
+   "to": 0.5,
+   "verdict": "reverted",
+   "hit": 0.297
+  },
+  {
+   "t": 1160,
+   "dial": "curiosityBase",
+   "from": 0.4,
+   "to": 0.3,
+   "verdict": "reverted",
+   "hit": 0.304
+  }
+ ]
+}

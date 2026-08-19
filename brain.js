@@ -168,6 +168,11 @@ export class Eye {
     this.memberOverlay = new Map()  // word -> its OVERLAY entity (whole above parts; parts stay live)
     this.absorbCount = 0
     this.foldLog = []           // bounded ledger of overlay formations/dissolutions (legible memory edits)
+    // THE DIALS — the laws of this mind's own cognition, handed to it under constitution:
+    // it may propose bounded changes; reality grades trials; every adoption is ledgered.
+    // (Nothing here touches truth: grounding, gates, and the court stay external.)
+    this.dials = { curiosityBase: 0.4, curiositySpan: 1.2, chunkHot: 2.6, seekGain: 0.5, overlayFloor: 0.4 }
+    this.dialLog = []
     this.claims = []            // open claims: found paths awaiting swarm verification
     this.claimSeq = 0
     this.groundedEdges = new Set() // verified-thread keys — the long-term store (decay floor)
@@ -282,7 +287,7 @@ export class Eye {
       const prior = this.Tseq.get(kb) || 0
       const tot = this.outHot.get(a) || 0
       const surprise = tot <= 0 ? 1 : Math.max(0, 1 - prior / tot)
-      const cw = (0.4 + 1.2 * surprise) * gain
+      const cw = (this.dials.curiosityBase + this.dials.curiositySpan * surprise) * gain
       // WRITE-THROUGH: a thread whose both ends live in the same fold writes INTO the
       // fold's delta layer — the fold keeps learning; the window stays condensed. No
       // unzip/write/rezip ceremony, ever.
@@ -356,7 +361,7 @@ export class Eye {
   _crystallize() {
     if (this.chunks.size >= CHUNK_CAP) return
     for (const [k, hot] of this.Tseq) {
-      if (hot < CHUNK_HOT) continue
+      if (hot < this.dials.chunkHot) continue
       const [a, b] = unkey(k)
       if (a === END || b === END) continue         // endings never crystallize into chunks
       const ck = a + '·' + b
@@ -1171,7 +1176,7 @@ export class Eye {
     for (let i = 0; i < path.length - 1; i++) {
       const k = key(path[i], path[i + 1])
       const kr = key(path[i + 1], path[i])
-      if (this.Tassoc.has(k)) this.Tassoc.set(k, this.Tassoc.get(k) + 0.5)
+      if (this.Tassoc.has(k)) this.Tassoc.set(k, this.Tassoc.get(k) + this.dials.seekGain)
       else if (this.Tassoc.has(kr)) this.Tassoc.set(kr, this.Tassoc.get(kr) + 0.5)
       else this.Tassoc.set(k, 0.5)
     }
@@ -1314,7 +1319,7 @@ export class Eye {
       let heat = 0
       const inc = this.incident.get(ent)
       if (inc) for (const k of inc) heat += this.Tassoc.get(k) || 0
-      if (heat < OVERLAY_FLOOR) this.dissolveOverlay(ent, 'disuse')
+      if (heat < this.dials.overlayFloor) this.dissolveOverlay(ent, 'disuse')
     }
   }
   dissolveOverlay(ent, why = 'manual') {
