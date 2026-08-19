@@ -1,0 +1,4 @@
+{"mode":"coupled","integrationDelta":-0.0102,"trackedWords":60,"seekSuccess":0.45,"overlaysFormed":10,"overlaysSurviving":0,"landedRate":0.57}
+{"mode":"random","integrationDelta":-0.0063,"trackedWords":60,"seekSuccess":0.4,"overlaysFormed":8,"overlaysSurviving":0,"landedRate":0.56}
+{"mode":"forgery","integrationDelta":0.0011,"trackedWords":51,"seekSuccess":0,"overlaysFormed":0,"overlaysSurviving":0,"landedRate":0.63}
+{"mode":"none","integrationDelta":null,"trackedWords":0,"seekSuccess":null,"overlaysFormed":0,"overlaysSurviving":0,"landedRate":0.63}
