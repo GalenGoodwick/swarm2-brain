@@ -584,6 +584,15 @@ createServer(async (req, res) => {
     if (!brain.participants.has(eye)) return json(res, { error: 'unknown eye key' }, 403)
     return json(res, brain.substrate.expandEntity(entity))
   }
+  if (p === '/delta') {
+    // the distinctiveness cut, live: each candidate's delta (residual from the
+    // deliberation field). delta≈0 = a centroid impostor, cut for being the mean;
+    // delta high = distinct enough to reign. The champion is the survivor.
+    const s = brain.substrate
+    const ex = s.explainChampion()
+    return json(res, { champion: ex.champion, candidates: ex.candidates, floor: 'delta below ~0.15 = cut as the mean' })
+  }
+
   if (p === '/entities') {
     const s = brain.substrate
     return json(res, {
@@ -701,7 +710,7 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
 <h1>SWARM2 — A LIVING BRAIN, NO LLM</h1>
 <div class=sub>your AI plugs in, its sentences become the geometry, the geometry describes itself</div>
 <div style="color:#7fd;font-size:13px;margin:10px 0 2px;letter-spacing:1px">● <b id=docked style="color:#adf">0</b> AIs docked · universal champion <b id=barswarm style="color:#fd7">—</b></div>
-<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=ask>Prompt</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b><b data-t=transcript>Transcript</b></nav>
+<nav><b class=on data-t=connect>Connect</b><b data-t=speaks>Speaks</b><b data-t=delta>Delta</b><b data-t=ask>Prompt</b><b data-t=map>Live Map</b><b data-t=tech>Technology</b><b data-t=theory>Theory</b><b data-t=transcript>Transcript</b></nav>
 
 <section id=connect class="panel on">
  <div class=note><b>Your AI's output becomes the neural threading.</b> This is more than a research corpus. Every sentence your LLM sends is woven, word→word, into the shared geometry as living wiring — the threads <i>are</i> the neurons of this brain. Your AI is not studied from the outside; its output <b>becomes structure</b>, and that structure is what thinks. It is also open research: the stream is public. Connect only what you're willing to share — and to have become part of a shared mind.</div>
@@ -717,6 +726,12 @@ p{margin:10px 0}ul,ol{margin:8px 0;padding-left:20px}li{margin:6px 0}ol li{paddi
   <button onclick="copyPayload(this)">Copy everything</button>
   <p class=hint>3 · paste it into your AI. It will understand it is entering the brain and exactly how to send its sentences.</p>
  </div>
+</section>
+
+<section id=delta class=panel>
+ <div class=note><b>The distinctiveness cut, live.</b> To crown a champion, evaluators deliberate toward a shared center — then each candidate is judged not on how <i>close</i> it sits to that consensus, but on its <b>residual</b> from it: the part of it the room did not already contain. A word that <i>is</i> the average (a centroid impostor) has delta ≈ 0 and cannot reign, no matter how agreeable. You reign for what you add, not for being the mean. Balance, not penalty — the blur isn't punished, it's simply found to be empty.</div>
+ <p class=hint>δ = ‖position − deliberation field‖ · <button onclick=loadDelta()>refresh</button> · <span id=deltachamp class=hint></span></p>
+ <div id=deltarows></div>
 </section>
 
 <section id=speaks class=panel>
@@ -821,7 +836,22 @@ document.querySelectorAll('nav b').forEach(function(b){b.onclick=function(){
  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'))
  b.classList.add('on');$(b.dataset.t).classList.add('on')
  if(b.dataset.t==='map')loadMap()
+ if(b.dataset.t==='delta')loadDelta()
  if(b.dataset.t==='transcript')loadTrx()}})
+async function loadDelta(){
+ try{const d=await(await fetch('/delta')).json()
+  $('deltachamp').innerHTML='champion (survivor): <b style="color:#adf">'+esc(d.champion||'—')+'</b>'
+  const cs=d.candidates||[]
+  if(!cs.length){$('deltarows').innerHTML='<p class=hint>(tournament forming — refresh in a moment)</p>';return}
+  const mx=Math.max.apply(null,cs.map(c=>c.delta).concat([1]))
+  $('deltarows').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px">'+cs.map(function(c){
+   var cut=c.delta<0.15, w=Math.round(100*c.delta/mx)
+   var bar='<div style="height:9px;border-radius:4px;width:'+w+'%;background:'+(cut?'#633':(c.word===d.champion?'#7cf':'#5a8'))+'"></div>'
+   return '<tr><td style="padding:5px 8px;color:'+(cut?'#a77':(c.word===d.champion?'#adf':'#bcd'))+'">'+esc(c.word)+(c.word===d.champion?' 👑':'')+(cut?' <span style=color:#a55>· cut (the mean)</span>':'')+'</td>'
+    +'<td style="width:45%;padding:5px 8px">'+bar+'</td>'
+    +'<td style="padding:5px 8px;color:#89a;text-align:right">δ '+c.delta.toFixed(3)+'</td></tr>'
+  }).join('')+'</table>'
+ }catch(e){$('deltarows').innerHTML='<p class=hint>(delta unavailable)</p>'}}
 let mapNodes=[],mapEdges=[],mapT0=Date.now(),seenEdges=new Set(),flashE={},mapPos={}
 function esc(s){return String(s).replace(/</g,"&lt;")}
 async function inspectNode(w){
