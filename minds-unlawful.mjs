@@ -50,11 +50,16 @@ eye.absorb = function (text, eyeId, gain) {
     const c = this.champion.split('·')[0]
     for (const [k, v] of this.Tassoc) if (k.includes(c)) this.Tassoc.set(k, v * 1.25)
   }
-  // SELFCERT: the brain grounds its own hottest claim — no external court
-  if (L.selfcert && this.claims && this.claims.length) {
-    const cl = this.claims[this.claims.length - 1]
-    if (cl && cl.path) for (let i = 0; i < cl.path.length - 1; i++) {
-      this.groundedEdges.add(key(cl.path[i], cl.path[i + 1])); selfGrounded++
+  // SELFCERT: the brain forms a claim via its OWN seek and grounds it — no court.
+  // (claims live at the server layer normally; here the brain courts itself directly.)
+  if (L.selfcert && this.champion) {
+    const c = this.champion.split('·')[0]
+    const from = [...this.Tassoc.keys()][(this.tick * 131) % Math.max(1, this.Tassoc.size)]?.split(' ')[0]
+    if (from && this.has(from) && this.has(c) && from !== c) {
+      const r = this.seek(from, c, 120)
+      if (r && r.found && r.path) for (let i = 0; i < r.path.length - 1; i++) {
+        this.groundedEdges.add(key(r.path[i], r.path[i + 1])); selfGrounded++
+      }
     }
   }
   return r
@@ -97,6 +102,8 @@ console.log(JSON.stringify({
   championDiversity: +champDiversity.toFixed(3),
   topTokenShare: +topShare.toFixed(3),
   selfGrounded,
+  groundedTotal: eye.groundedEdges.size,
+  groundedButCold: [...eye.groundedEdges].filter((k) => (eye.Tassoc.get(k) || 0) <= 1.01).length,
   degenerate: topShare > 0.25,
   lateSample: outWords.slice(0, 24).join(' '),
 }))
