@@ -1,0 +1,4 @@
+{"cap":2000,"liveThreads":2000,"predictHit":0.036,"championStability":0.042,"distinctChampions":427,"concepts":0,"vocabWarm":783}
+{"cap":8000,"liveThreads":8000,"predictHit":0.186,"championStability":0.029,"distinctChampions":525,"concepts":0,"vocabWarm":1703}
+{"cap":20000,"liveThreads":14502,"predictHit":0.186,"championStability":0.011,"distinctChampions":550,"concepts":0,"vocabWarm":2167}
+{"cap":60000,"liveThreads":14502,"predictHit":0.186,"championStability":0.011,"distinctChampions":550,"concepts":0,"vocabWarm":2167}
