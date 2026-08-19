@@ -71,7 +71,7 @@ export const WALK_LEN = 12
 // collapsing to pure thread-frequency centrality.
 export const LR_HEBB = 0.02      // per-tick thread-pull cap (step = LR_HEBB * hot/(1+hot))
 export const SPRING = 0.02       // per-tick relaxation toward the pristine anchor
-export const BRAIN_VERSION = 'hebbian-1'   // pre-change baseline: git tag pre-hebbian
+export const BRAIN_VERSION = 'overlay-1'   // overlay folding: whole above parts, survival by use
 
 export const FUNCTION_WORDS = new Set([
   'the', 'and', 'that', 'this', 'you', 'your', 'what', 'when', 'where', 'with',
