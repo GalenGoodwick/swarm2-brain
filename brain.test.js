@@ -873,4 +873,16 @@ function randVecSpace(nWords, dim, seed) {
   ok('members released on dissolution', !eye.memberOverlay.has('oak'))
 }
 
+
+{
+  // the brain's OWN folds are overlays: autoConsolidate never touches the substrate
+  const g = mockProvider({ oak: [1, 0, 0], elm: [0.95, 0.1, 0], fir: [0.9, 0.2, 0.05], ash: [0.92, 0.05, 0.1], ivy: [0.9, 0.12, 0.08], sky: [0, 1, 0] })
+  const eye = new Eye('t', g)
+  for (let i = 0; i < 6; i++) { eye.absorb('oak elm fir ash ivy'); eye.absorb('ivy ash oak fir elm') }
+  const seqBefore = JSON.stringify([...eye.Tseq].sort())
+  const r = eye.autoConsolidate(60, 0.1)
+  ok('autoConsolidate executes as an overlay (or legibly refuses)', r === null || (r.overlay === true && !!r.entity))
+  ok('autonomous folding leaves T_seq byte-identical (the ablation harm is impossible)', JSON.stringify([...eye.Tseq].sort()) === seqBefore)
+}
+
 console.log(`\n  ${passed} gates passed.`)

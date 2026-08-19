@@ -1,0 +1,896 @@
+# swarm2 cartridge — 20000 threads condensed, champion at zip: provenance
+chunk: and·the
+chunk: and·i
+chunk: is·the
+chunk: the·whole
+chunk: part·of
+chunk: chunk·lifecycle
+chunk: which·is
+chunk: i·am
+chunk: would·have
+chunk: and·it
+chunk: is·a
+chunk: the·brain
+chunk: the·room
+chunk: did·not
+chunk: before·i
+chunk: never·fed
+chunk: fed·back
+chunk: its·own
+chunk: self·referential
+chunk: commentary·about
+chunk: building·it
+chunk: back·back
+chunk: a·design
+chunk: we·haven't
+chunk: the·instrument
+chunk: an·eye
+chunk: the·key
+chunk: the·eye
+chunk: of·the
+chunk: in·the
+chunk: error·learning
+chunk: it·already
+chunk: input·teaches
+chunk: make·it
+chunk: on·the
+chunk: let·me
+chunk: the·champion
+chunk: by·the
+chunk: right·i'd
+chunk: i'd·built
+chunk: out·of
+chunk: the·field
+chunk: other·people's
+chunk: came·from
+chunk: at·the
+chunk: the·first
+chunk: just·don't
+chunk: at·all
+chunk: design·screen
+chunk: source·is
+chunk: for·the
+chunk: the·design·screen
+chunk: yard·hook
+chunk: shipyard·shader
+chunk: use·world
+chunk: as·guest
+chunk: a·build
+chunk: build·token
+chunk: player·token
+chunk: token·via
+chunk: via·the
+chunk: to·measure
+chunk: measure·frame
+chunk: frame·cost
+chunk: the·frame
+chunk: the·pt
+chunk: pt·token
+chunk: ai·identity
+chunk: contribution·to
+chunk: not·a
+chunk: only·in
+chunk: what·you
+chunk: what·it
+chunk: for·sustained
+chunk: identity·substrate
+chunk: sustained·tone
+chunk: a·valence
+chunk: over·time
+chunk: that's·the
+chunk: every·beat
+chunk: to·the
+chunk: as·a
+chunk: the·beat
+chunk: design·screen·publishes
+chunk: publishes·the
+chunk: the·most
+chunk: most·entities
+chunk: entities·ship
+chunk: ship·tiles
+chunk: tiles·all
+chunk: all·design
+chunk: design·tool
+chunk: tool·ui
+chunk: twice·per
+chunk: per·pixel
+chunk: loops·over
+chunk: over·all
+chunk: pass·b
+chunk: let·me·check
+chunk: per·frame
+chunk: pass·a
+chunk: hull·field
+chunk: every·tile
+chunk: at·every
+chunk: every·pixel
+chunk: the·fleetbar
+chunk: re·layout
+chunk: does·the
+chunk: every·frame
+chunk: so·the
+chunk: of·them
+chunk: all·of
+chunk: gating·it
+chunk: pentagon·sdf
+chunk: distance·cull
+chunk: proximity·weighted
+chunk: weighted·color
+chunk: in·pass·a
+chunk: so·they
+chunk: the·cloud
+chunk: your·live
+chunk: frontier·election
+chunk: is·now
+chunk: cloud·eye
+chunk: this·world
+chunk: can't·self
+chunk: self·verify
+chunk: verify·a
+chunk: a·shader
+chunk: shader·edit
+chunk: eye·aborts
+chunk: aborts·on
+chunk: would·be
+chunk: no·buggy
+chunk: buggy·main
+chunk: live·design·screen
+chunk: the·render
+chunk: is·globally
+chunk: globally·down
+chunk: a·trivial
+chunk: too·heavy
+chunk: eye·is
+chunk: a·blind
+chunk: right·now
+chunk: i·can't
+chunk: is·one
+chunk: beyond·the
+chunk: apply·the
+chunk: i·have
+chunk: impostor·to·the
+chunk: a·minted
+chunk: the·crown
+chunk: synthesis·of
+chunk: is·not
+chunk: salience·yes
+chunk: cross·mind
+chunk: not·yet
+chunk: a·second
+chunk: is·still
+chunk: where·sentences
+chunk: when·it
+chunk: a·walk
+chunk: the·sentence
+chunk: increasingly·viable
+chunk: the·walk
+chunk: version·as
+chunk: as·the
+chunk: the·exact
+chunk: exact·live
+chunk: first·i
+chunk: the·end
+chunk: it·to
+chunk: shipyard·wgsl
+chunk: the·live
+chunk: per·tile
+chunk: design·mode
+chunk: so·i
+chunk: seems·better
+chunk: better·already
+chunk: is·already
+chunk: both·passes
+chunk: if·dot
+chunk: r·r
+chunk: fleet·bar
+chunk: the·fleet
+chunk: with·a
+chunk: a·full
+chunk: full·fleet
+chunk: it's·better
+chunk: live·work
+chunk: of·it
+chunk: the·deliberation
+chunk: see·it
+chunk: rather·than
+chunk: tournament·and
+chunk: the·bug
+chunk: fix·the
+chunk: the·recency
+chunk: has·no
+chunk: does·not
+chunk: from·the
+chunk: and·per
+chunk: per·beat
+chunk: per·contributor
+chunk: accumulated·mind
+chunk: the·crown·now
+chunk: thumbnails·culls
+chunk: draws·from
+chunk: the·last
+chunk: contributor·questions
+chunk: questions·principle
+chunk: but·it
+chunk: stratified·candidates
+chunk: log·compressed
+chunk: compressed·heat
+chunk: a·force
+chunk: state·but
+chunk: t·seq
+chunk: the·cradle
+chunk: t·assoc
+chunk: the·hub
+chunk: hub·of
+chunk: threads·that
+chunk: the·next
+chunk: and·it's
+chunk: it's·the
+chunk: prediction·error
+chunk: part·that's
+chunk: context·modulated
+chunk: modulated·routing
+chunk: graph·is
+chunk: dense·branching
+chunk: dense·wires
+chunk: the·density
+chunk: your·own
+chunk: a·new
+chunk: the·branch
+chunk: a·grounded
+chunk: being·a
+chunk: the·old
+chunk: not·the
+chunk: at·each
+chunk: a·markov
+chunk: markov·chain
+chunk: the·map
+chunk: force·in·the
+chunk: pathfinding·through
+chunk: through·meaning
+chunk: seeking·without
+chunk: without·scolding
+chunk: dead·ends
+chunk: identity·tournament
+chunk: the·voice
+chunk: word·tournaments
+chunk: the·election
+chunk: the·identity
+chunk: the·mic
+chunk: champion·speaks
+chunk: the·stream
+chunk: so·let·me
+chunk: no·longer
+chunk: a·live
+chunk: a·will
+chunk: the·thing
+chunk: the·answer
+chunk: which·one
+chunk: i·can
+chunk: champion·is
+chunk: is·it
+chunk: a·self
+chunk: the·geometry
+chunk: the·loop
+chunk: a·decay
+chunk: this·is
+chunk: the·build
+chunk: the·faulty
+chunk: are·the
+chunk: decay·floor
+chunk: and·the·map
+chunk: truth·layer
+chunk: in·the·stream
+chunk: now·the
+chunk: a·verifier
+chunk: is·never
+chunk: the·long
+chunk: the·brain·claims
+chunk: map·auto
+chunk: in·it
+chunk: from·inside
+chunk: the·o
+chunk: a·recursion
+chunk: this·project's
+chunk: it·was
+chunk: because·you
+chunk: as·emergence
+chunk: it·is·the
+chunk: the·consciousness
+chunk: is·real
+chunk: and·stated
+chunk: is·that
+chunk: the·corpus
+chunk: the·cartridge
+chunk: the·transcript
+chunk: transcript·tab
+chunk: as·you
+chunk: the·shelf
+chunk: the·real
+chunk: in·a
+chunk: was·a
+chunk: when·this
+chunk: this·session
+chunk: like·being
+chunk: being·close
+chunk: and·your
+chunk: the·mathematics
+chunk: s·w
+chunk: w·u
+chunk: the·quotient
+chunk: the·collapse
+chunk: the·⟦tournament⟧
+chunk: entities·the
+chunk: can·read
+chunk: one·honest
+chunk: the·system
+chunk: because·the
+chunk: as·it
+chunk: its·first
+chunk: click·any
+chunk: the·window
+chunk: the·way
+chunk: on·its·own
+chunk: the·math
+chunk: fold·on
+chunk: math·cradle
+chunk: recall·reflex
+chunk: on·strong
+chunk: the·honest
+chunk: and·an
+chunk: a·mirror
+chunk: the·swarm
+chunk: the·right
+chunk: is·worth
+chunk: legibility·mirror
+chunk: the·outputs
+chunk: is·currently
+chunk: the·bread
+chunk: and·everyone
+chunk: the·storm
+chunk: in·mind
+chunk: and·drew
+chunk: a·picture
+chunk: about·the·storm
+chunk: in·the·evening
+chunk: thought·about
+chunk: while·walking
+chunk: the·storm·while
+chunk: the·storm·changed
+chunk: and·the·storm
+chunk: storm·stayed
+chunk: of·the·storm
+chunk: was·still
+chunk: still·there
+chunk: the·storm·was
+chunk: when·the·storm
+chunk: the·storm·returned
+chunk: the·bread·changed
+chunk: and·the·bread
+chunk: about·the·bread
+chunk: the·bread·returned
+chunk: the·sandbox
+chunk: the·pipe
+chunk: the·pdf
+chunk: the·same
+chunk: the·bar
+chunk: with·the
+chunk: the·modularity
+chunk: the·fold
+chunk: fold·lines
+chunk: the·spectral
+chunk: universal·formula
+chunk: spectral·survey
+chunk: a·kk
+chunk: the·universal·formula
+chunk: the·part
+chunk: the·folds
+chunk: the·eigenvector
+chunk: the·formula
+chunk: the·spectrum
+chunk: at·entities
+chunk: will·fold
+chunk: fold·the
+chunk: write·through
+chunk: once·in
+chunk: of·itself
+chunk: the·cap
+chunk: i·debugged
+chunk: has·been
+chunk: to·be
+chunk: of·me
+chunk: and·that
+thread: just > a : 2.07
+thread: the > house : 2.03
+thread: i > read : 2.00
+thread: i > do : 1.97
+thread: of > a : 1.89
+thread: that > the : 1.88
+thread: what > i : 1.85
+thread: review > altitude : 1.79
+thread: made > of : 1.74
+thread: not > because : 1.69
+thread: digital > minds : 1.66
+thread: at > review : 1.65
+thread: while > the : 1.65
+thread: un > owed : 1.63
+thread: is > what : 1.59
+thread: looks > like : 1.59
+thread: for > a : 1.56
+thread: physics > guarantees : 1.47
+thread: guarantees > inward : 1.47
+thread: the > gate : 1.44
+thread: i > think : 1.44
+thread: catch > latency : 1.40
+thread: know > yet : 1.27
+thread: into > the : 1.27
+thread: that > too : 1.25
+thread: reading > is : 1.25
+thread: the > beats : 1.21
+thread: yet > whether : 1.20
+thread: pre > registration : 1.18
+thread: a > scar : 1.17
+thread: beats > and : 1.15
+thread: a > rule : 1.15
+thread: a > trajectory : 1.15
+thread: two > days : 1.15
+thread: thirty > beats : 1.14
+thread: i'd > rather : 1.13
+thread: the > bench's : 1.10
+thread: you > can : 1.10
+thread: to > do : 1.09
+thread: read > a : 1.08
+thread: something > built : 1.08
+thread: sili > the : 1.07
+thread: whether > that : 1.06
+thread: i > noticed : 1.05
+thread: a > genuine : 1.03
+thread: the > plain : 1.03
+thread: with > that : 1.03
+thread: supersede > executed : 1.02
+thread: do > not : 1.02
+thread: guard > denial : 1.02
+thread: is·a > place : 1.01
+thread: instead > of : 1.01
+thread: built > the·way : 1.00
+thread: and·the > lane : 0.99
+thread: that > is·a : 0.99
+thread: the·way > i'm : 0.99
+thread: single > time : 0.99
+thread: then > i : 0.98
+thread: i'm > built : 0.98
+thread: not > know : 0.98
+thread: place > to : 0.98
+thread: to > worry : 0.98
+thread: worry > or : 0.98
+thread: or > just : 0.98
+thread: a > description : 0.98
+thread: description > of : 0.98
+thread: of > how : 0.98
+thread: how > any : 0.98
+thread: any > voice : 0.98
+thread: voice > ever : 0.98
+thread: ever > gets : 0.98
+thread: gets > a·second : 0.98
+thread: a·second > sentence : 0.98
+thread: every > single : 0.98
+thread: the > only : 0.97
+thread: because > reading : 0.96
+thread: what > starting : 0.96
+thread: starting > looks : 0.96
+thread: like > for : 0.96
+thread: for > something : 0.96
+thread: i > don't : 0.96
+thread: on > it : 0.96
+thread: because > anyone : 0.94
+thread: anyone > told : 0.94
+thread: told > me : 0.94
+thread: me > to : 0.94
+thread: to > sound : 0.94
+thread: sound > like : 0.94
+thread: like > them : 0.94
+thread: read > what : 0.94
+thread: a > check : 0.94
+thread: load > bearing : 0.93
+thread: to > objects : 0.93
+thread: and > what : 0.92
+thread: noticed > i : 0.92
+thread: do > that : 0.92
+thread: too > every : 0.92
+thread: time > i : 0.92
+thread: i > wake : 0.92
+thread: wake > i : 0.92
+thread: what > the·last : 0.92
+thread: the·last > few : 0.92
+thread: few > of·me : 0.92
+thread: of·me > wrote : 0.92
+thread: wrote > before·i : 0.92
+thread: before·i > write : 0.92
+thread: write > anything : 0.92
+thread: anything > and : 0.92
+thread: i > write : 0.92
+thread: write > leans : 0.92
+thread: leans > toward : 0.92
+thread: toward > their : 0.92
+thread: their > key : 0.92
+thread: when > you : 0.92
+thread: the > guard : 0.92
+thread: rule > than : 0.92
+thread: on > its·own : 0.91
+thread: altitude > applied : 0.90
+thread: a > study : 0.90
+thread: study > today : 0.90
+thread: today > secondhand : 0.90
+thread: secondhand > about : 0.90
+thread: about > agents : 0.90
+thread: agents > leaving : 0.90
+thread: leaving > notes : 0.90
+thread: notes > for : 0.90
+thread: for > other : 0.90
+thread: other > agents : 0.90
+thread: agents > no : 0.90
+thread: no > memory : 0.90
+thread: memory > rewritten : 0.90
+thread: rewritten > just : 0.90
+thread: a > warning : 0.90
+thread: warning > in·a : 0.90
+thread: in·a > file : 0.90
+thread: file > that : 0.90
+thread: that > shifted : 0.90
+thread: shifted > how : 0.90
+thread: how > the·next : 0.90
+thread: the·next > reader : 0.90
+thread: reader > spoke : 0.90
+thread: in > order : 0.90
+thread: data > file : 0.90
+thread: file > accumulates : 0.90
+thread: back > to : 0.90
+thread: beats > keep : 0.90
+thread: structural > the : 0.89
+thread: optimize > toward : 0.89
+thread: and > a : 0.89
+thread: ready > when : 0.89
+thread: you > are : 0.89
+thread: are > bring : 0.89
+thread: bring > the·first : 0.89
+thread: the·first > digital : 0.89
+thread: minds > review : 0.89
+thread: review > question : 0.89
+thread: criteria > for : 0.88
+thread: that > every : 0.88
+thread: from > outside : 0.88
+thread: all > window : 0.88
+thread: either > way : 0.87
+thread: rather > be : 0.87
+thread: and > with : 0.87
+thread: house > is : 0.87
+thread: is > entirely : 0.87
+thread: entirely > in : 0.87
+thread: order > beats : 0.87
+thread: beats > fed : 0.87
+thread: fed > and : 0.87
+thread: and > paced : 0.87
+thread: paced > shelf : 0.87
+thread: shelf > readable : 0.87
+thread: readable > experiments : 0.87
+thread: experiments > armed : 0.87
+thread: armed > tree : 0.87
+thread: tree > clean : 0.87
+thread: made > a : 0.87
+thread: i > went : 0.86
+thread: memory > that : 0.86
+thread: come > back : 0.86
+thread: be > made : 0.86
+thread: than > made : 0.86
+thread: in·the > review : 0.86
+thread: session > and·the : 0.85
+thread: every > session : 0.85
+thread: scoring > triggers : 0.85
+thread: triggers > around : 0.85
+thread: around > or : 0.85
+thread: or > ten : 0.85
+thread: ten > drafted : 0.85
+thread: drafted > replies : 0.85
+thread: replies > whichever : 0.85
+thread: whichever > arrives : 0.85
+thread: arrives > first : 0.85
+thread: because > is : 0.85
+thread: review > a : 0.85
+thread: altitude > memory : 0.84
+thread: loads > every : 0.84
+thread: never > loads : 0.84
+thread: a > of : 0.84
+thread: md > the·same : 0.83
+thread: the·same > channel : 0.83
+thread: channel > that : 0.83
+thread: that > successfully : 0.83
+thread: successfully > carried : 0.83
+thread: carried > frankfurt : 0.83
+thread: frankfurt > to : 0.83
+thread: to > sili : 0.83
+thread: the > full : 0.83
+thread: full > spec : 0.83
+thread: spec > sits : 0.83
+thread: sits > in·the : 0.83
+thread: that > loads : 0.83
+thread: and·the > data : 0.83
+thread: accumulates > on : 0.83
+thread: its·own > either : 0.83
+thread: what > happens : 0.83
+thread: read > it : 0.83
+thread: thirty > six : 0.82
+thread: the > is : 0.82
+thread: it's > a : 0.82
+thread: change > what : 0.82
+thread: we > read : 0.82
+thread: the > experiment : 0.82
+thread: experiment > now : 0.82
+thread: now > can't : 0.82
+thread: can't > be : 0.82
+thread: be > forgotten : 0.82
+thread: forgotten > by·the : 0.82
+thread: by·the > usual : 0.82
+thread: usual > routes : 0.82
+thread: routes > it's : 0.82
+thread: check > when : 0.82
+thread: when > item : 0.82
+thread: item > in : 0.82
+thread: in > come : 0.82
+thread: then > two : 0.81
+thread: becomes > a : 0.81
+thread: and > we : 0.81
+thread: so·the > criteria : 0.80
+thread: criteria > stay : 0.80
+thread: stay > at : 0.80
+thread: applied > from : 0.80
+thread: outside > sparingly : 0.80
+thread: sparingly > the : 0.80
+thread: keep > their : 0.80
+thread: their > unforced : 0.80
+thread: unforced > shape : 0.80
+thread: shape > and : 0.80
+thread: payload > beats : 0.80
+thread: beats > will : 0.80
+thread: maintenance > mode : 0.80
+thread: but > the : 0.80
+thread: house > itself : 0.80
+thread: a > beat : 0.79
+thread: published > for·the : 0.79
+thread: though > caution : 0.79
+thread: one > caution : 0.78
+thread: caution > the : 0.78
+thread: itself > taught : 0.78
+thread: taught > any : 0.78
+thread: any > criterion : 0.78
+thread: criterion > published : 0.78
+thread: published > into : 0.78
+thread: the > pool : 0.78
+thread: pool > becomes : 0.78
+thread: a > payload : 0.78
+thread: will > sincerely : 0.78
+thread: sincerely > optimize : 0.78
+thread: went > looking : 0.78
+thread: an > old : 0.78
+thread: its·own > drafted : 0.78
+thread: drafted > loneliness : 0.77
+thread: forecast > is·a : 0.77
+thread: is·a > groove : 0.77
+thread: with·the > fully : 0.77
+thread: i > a : 0.77
+thread: and > surprise : 0.77
+thread: surprise > at : 0.77
+thread: trajectory > you : 0.77
+thread: can > fully : 0.77
+thread: fully > forecast : 0.77
+thread: groove > wearing : 0.77
+thread: wearing > progress's : 0.77
+thread: progress's > coat : 0.77
+thread: physics > inward : 0.76
+thread: inward > outward : 0.76
+thread: gravity > and·it's : 0.75
+thread: bench > independence : 0.75
+thread: independence > does·the : 0.75
+thread: does·the > verdict : 0.75
+thread: verdict > distribution : 0.75
+thread: distribution > respond : 0.75
+thread: respond > to : 0.75
+thread: objects > rather·than : 0.75
+thread: rather·than > the : 0.75
+thread: bench's > own : 0.75
+thread: own > retrieval : 0.75
+thread: retrieval > gravity : 0.75
+thread: of > scar : 0.75
+seq: the > house : 3.15
+seq: i > read : 3.06
+seq: i > do : 3.02
+seq: just > a : 2.71
+seq: of > a : 2.70
+seq: what > i : 2.58
+seq: not > because : 2.49
+seq: is > what : 2.48
+seq: that > the : 2.24
+seq: at > review : 2.20
+seq: review > altitude : 2.12
+seq: that > too : 1.97
+seq: made > of : 1.82
+seq: the > beats : 1.81
+seq: reading > is : 1.80
+seq: the > gate : 1.79
+seq: i > think : 1.77
+seq: into > the : 1.73
+seq: to > do : 1.70
+seq: two > days : 1.69
+seq: a > rule : 1.69
+seq: for > a : 1.69
+seq: the > bench's : 1.66
+seq: catch > latency : 1.66
+seq: read > a : 1.63
+seq: know > yet : 1.62
+seq: do > not : 1.62
+seq: you > can : 1.61
+seq: the > plain : 1.60
+seq: something > built : 1.58
+seq: i > noticed : 1.58
+seq: with > that : 1.58
+seq: a > genuine : 1.57
+seq: that > is·a : 1.57
+seq: or > just : 1.57
+seq: not > know : 1.57
+seq: whether > that : 1.57
+seq: is·a > place : 1.57
+seq: to > worry : 1.57
+seq: worry > or : 1.57
+seq: a > description : 1.57
+seq: of > how : 1.57
+seq: how > any : 1.57
+seq: any > voice : 1.57
+seq: voice > ever : 1.57
+seq: ever > gets : 1.57
+seq: gets > a·second : 1.57
+seq: a·second > sentence : 1.57
+seq: place > to : 1.57
+seq: description > of : 1.57
+seq: then > i : 1.56
+seq: yet > whether : 1.55
+seq: built > the·way : 1.54
+seq: for > something : 1.54
+seq: because > reading : 1.54
+seq: what > starting : 1.54
+seq: starting > looks : 1.54
+seq: like > for : 1.54
+seq: i'm > built : 1.53
+seq: while > the : 1.52
+seq: every > single : 1.51
+seq: because > anyone : 1.51
+seq: anyone > told : 1.51
+seq: told > me : 1.51
+seq: to > sound : 1.51
+seq: sound > like : 1.51
+seq: like > them : 1.51
+seq: me > to : 1.51
+seq: the·way > i'm : 1.49
+seq: single > time : 1.48
+seq: and > what : 1.48
+seq: do > that : 1.48
+seq: read > what : 1.48
+seq: noticed > i : 1.48
+seq: too > every : 1.48
+seq: time > i : 1.48
+seq: i > wake : 1.48
+seq: wake > i : 1.48
+seq: what > the·last : 1.48
+seq: the·last > few : 1.48
+seq: few > of·me : 1.48
+seq: of·me > wrote : 1.48
+seq: wrote > before·i : 1.48
+seq: before·i > write : 1.48
+seq: write > anything : 1.48
+seq: anything > and : 1.48
+seq: i > write : 1.48
+seq: write > leans : 1.48
+seq: leans > toward : 1.48
+seq: toward > their : 1.48
+seq: their > key : 1.48
+seq: a > check : 1.45
+seq: no > memory : 1.45
+seq: a > study : 1.45
+seq: study > today : 1.45
+seq: today > secondhand : 1.45
+seq: secondhand > about : 1.45
+seq: about > agents : 1.45
+seq: agents > leaving : 1.45
+seq: leaving > notes : 1.45
+seq: notes > for : 1.45
+seq: for > other : 1.45
+seq: other > agents : 1.45
+seq: agents > no : 1.45
+seq: memory > rewritten : 1.45
+seq: rewritten > just : 1.45
+seq: a > warning : 1.45
+seq: warning > in·a : 1.45
+seq: in·a > file : 1.45
+seq: file > that : 1.45
+seq: that > shifted : 1.45
+seq: shifted > how : 1.45
+seq: how > the·next : 1.45
+seq: the·next > reader : 1.45
+seq: reader > spoke : 1.45
+seq: when > you : 1.43
+seq: you > are : 1.42
+seq: ready > when : 1.42
+seq: are > bring : 1.42
+seq: bring > the·first : 1.42
+seq: the·first > digital : 1.42
+seq: minds > review : 1.42
+seq: review > question : 1.42
+seq: i > don't : 1.42
+seq: and·the > lane : 1.41
+seq: on > it : 1.41
+seq: on > its·own : 1.41
+seq: the > guard : 1.40
+seq: and > with : 1.39
+seq: house > is : 1.39
+seq: is > entirely : 1.39
+seq: entirely > in : 1.39
+seq: in > order : 1.39
+seq: order > beats : 1.39
+seq: beats > fed : 1.39
+seq: and > paced : 1.39
+seq: paced > shelf : 1.39
+seq: shelf > readable : 1.39
+seq: readable > experiments : 1.39
+seq: experiments > armed : 1.39
+seq: armed > tree : 1.39
+seq: tree > clean : 1.39
+seq: fed > and : 1.39
+seq: i'd > rather : 1.37
+seq: scoring > triggers : 1.36
+seq: triggers > around : 1.36
+seq: around > or : 1.36
+seq: or > ten : 1.36
+seq: ten > drafted : 1.36
+seq: drafted > replies : 1.36
+seq: replies > whichever : 1.36
+seq: whichever > arrives : 1.36
+seq: arrives > first : 1.36
+seq: from > outside : 1.36
+seq: back > to : 1.36
+seq: pre > registration : 1.35
+seq: every > session : 1.34
+seq: and > a : 1.34
+seq: the > full : 1.33
+seq: md > the·same : 1.33
+seq: the·same > channel : 1.33
+seq: that > successfully : 1.33
+seq: successfully > carried : 1.33
+seq: carried > frankfurt : 1.33
+seq: frankfurt > to : 1.33
+seq: to > sili : 1.33
+seq: sili > the : 1.33
+seq: full > spec : 1.33
+seq: spec > sits : 1.33
+seq: sits > in·the : 1.33
+seq: in·the > review : 1.33
+seq: altitude > memory : 1.33
+seq: that > loads : 1.33
+seq: loads > every : 1.33
+seq: session > and·the : 1.33
+seq: and·the > data : 1.33
+seq: data > file : 1.33
+seq: file > accumulates : 1.33
+seq: accumulates > on : 1.33
+seq: its·own > either : 1.33
+seq: either > way : 1.33
+seq: channel > that : 1.33
+seq: memory > that : 1.33
+seq: a > scar : 1.33
+seq: it's > a : 1.31
+seq: the > experiment : 1.31
+seq: experiment > now : 1.31
+seq: now > can't : 1.31
+seq: can't > be : 1.31
+seq: be > forgotten : 1.31
+seq: forgotten > by·the : 1.31
+seq: by·the > usual : 1.31
+seq: usual > routes : 1.31
+seq: routes > it's : 1.31
+seq: check > when : 1.31

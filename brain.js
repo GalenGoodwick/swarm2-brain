@@ -71,7 +71,7 @@ export const WALK_LEN = 12
 // collapsing to pure thread-frequency centrality.
 export const LR_HEBB = 0.02      // per-tick thread-pull cap (step = LR_HEBB * hot/(1+hot))
 export const SPRING = 0.02       // per-tick relaxation toward the pristine anchor
-export const BRAIN_VERSION = 'overlay-1'   // overlay folding: whole above parts, survival by use
+export const BRAIN_VERSION = 'overlay-2'   // overlay folding: whole above parts, survival by use
 
 export const FUNCTION_WORDS = new Set([
   'the', 'and', 'that', 'this', 'you', 'your', 'what', 'when', 'where', 'with',
@@ -1269,10 +1269,15 @@ export class Eye {
   // ordinary decay — and the parts were never at stake.
   overlayFold(seed, maxSize = 10) {
     if (FUNCTION_WORDS.has(seed)) return { error: 'grammar hubs never fold' }
-    const ent = '⟦' + seed + '⟧'
-    if (!this.has(seed) || this.entities.has(ent)) return { error: 'bad seed' }
+    if (!this.has(seed) || this.entities.has('⟦' + seed + '⟧')) return { error: 'bad seed' }
     const { S } = this._growDense(seed, maxSize)
     if (S.size < 3) return { error: 'no dense subnetwork around seed' }
+    return this.overlayFoldSet(seed, S)
+  }
+  overlayFoldSet(seed, S) {
+    if (FUNCTION_WORDS.has(seed)) return { error: 'grammar hubs never fold' }
+    const ent = '⟦' + seed + '⟧'
+    if (this.entities.has(ent)) return { error: 'bad seed' }
     const sums = new Map()
     for (const m of [this.Tassoc, this.Tseq]) {
       for (const [k, v] of m) {
@@ -1459,7 +1464,9 @@ export class Eye {
     // the refusal is legible too: every survey records its best candidate's math
     this.lastSurvey = best ? { seed: best.seed, method, modularity: +best.modularity.toFixed(2), bar: minModularity } : { none: true }
     if (!best || best.modularity < minModularity) return null   // the math must clear the bar
-    const r = this.collapseSet(best.seed, best.S)
+    // OVERLAY execution (Aug 18): the brain's own folds are additive wholes on probation —
+    // voice harm impossible by construction, disuse dissolves them, the ledger records why.
+    const r = this.overlayFoldSet(best.seed, best.S)
     if (r.error) return null
     return { ...r, method, modularity: +best.modularity.toFixed(2) }
   }
