@@ -71,7 +71,7 @@ export const WALK_LEN = 12
 // collapsing to pure thread-frequency centrality.
 export const LR_HEBB = 0.02      // per-tick thread-pull cap (step = LR_HEBB * hot/(1+hot))
 export const SPRING = 0.02       // per-tick relaxation toward the pristine anchor
-export const BRAIN_VERSION = 'overlay-2'   // overlay folding: whole above parts, survival by use
+export const BRAIN_VERSION = 'delta-1'   // overlay folding: whole above parts, survival by use
 
 export const FUNCTION_WORDS = new Set([
   'the', 'and', 'that', 'this', 'you', 'your', 'what', 'when', 'where', 'with',
@@ -519,17 +519,38 @@ export class Eye {
     }
     return current[0] || null
   }
+  // EXPLAIN — re-run the crown instrumented, exposing delta (residual from the
+  // deliberation field) per candidate and whether it survived or was cut as a centroid.
+  // Deterministic given state, so it reproduces the live champion. Read-only.
+  explainChampion() {
+    const scores = this.tournamentScores()
+    const ranked = [...scores.entries()].filter(([w]) => this._crownable(w)).sort((a, b) => b[1] - a[1]).map((x) => x[0])
+    if (ranked.length <= 1) return { champion: ranked[0] || null, candidates: [] }
+    const evalPool = ranked.slice(0, 120)
+    let current = []
+    const CAND = Math.min(CAND_POOL, ranked.length)
+    for (let i = 0; i < CAND; i++) current.push(ranked[Math.floor((i * ranked.length) / CAND)])
+    const rec = []
+    for (let tier = 0; tier < CHAMP_TIERS && current.length > 1; tier++) current = this._runTier(current, evalPool, tier === 0 ? rec : null)
+    const champ = current[0] || null
+    // dedupe by word, keep the record; sort by delta so the impostor-cut is legible
+    const seen = new Map()
+    for (const r of rec) if (!seen.has(r.word)) seen.set(r.word, r)
+    const cands = [...seen.values()].sort((a, b) => b.delta - a.delta)
+    return { champion: champ, candidates: cands }
+  }
+
   // one tier: round-robin candidates into cells (spreads the strong ones so they must win
   // a real bracket, not just top the global sum), run each cell, collect winners.
-  _runTier(cands, evalPool) {
+  _runTier(cands, evalPool, rec) {
     const numCells = Math.max(1, Math.ceil(cands.length / CELL_SIZE))
     const cells = Array.from({ length: numCells }, () => [])
     cands.forEach((w, i) => cells[i % numCells].push(w))
-    return cells.map((cell) => (cell.length === 1 ? cell[0] : this._runCell(cell, evalPool)))
+    return cells.map((cell) => (cell.length === 1 ? cell[0] : this._runCell(cell, evalPool, rec)))
   }
   // one cell: 5 evaluators score candidates from their positions (Pass 1), shift 20% toward
   // the deliberation field and re-score (Pass 2), then vote. Most votes wins (ties → score).
-  _runCell(cands, evalPool) {
+  _runCell(cands, evalPool, rec) {
     const evals = this._pickEvaluators(NUM_EVALUATORS, cands, evalPool)
     if (!evals.length) return cands[0]
     const sc = cands.map((c) => evals.map((ev) => this._evaluatorScore(ev, c)))
@@ -567,6 +588,7 @@ export class Eye {
         for (let d = 0; d < this.dim; d++) { const x = cv[d] - field[d]; r += x * x }
         const distinct = Math.min(1, Math.sqrt(r))    // centroid ≈ 0, real words ≈ 0.5–1.4
         for (let e = 0; e < evals.length; e++) sc[c][e] *= distinct
+        if (rec) rec.push({ word: cands[c], delta: +distinct.toFixed(3), preScore: +(sc[c].reduce((a, b) => a + b, 0) / Math.max(1, distinct)).toFixed(3) })
       }
     }
     // vote
